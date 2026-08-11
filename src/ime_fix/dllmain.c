@@ -58,13 +58,6 @@ static int my_strlen(const char *s)
     return n;
 }
 
-static int my_strcmp(const char *a, const char *b)
-{
-    int i = 0;
-    while (a[i] && b[i] && a[i] == b[i]) i++;
-    return (unsigned char)a[i] - (unsigned char)b[i];
-}
-
 static int my_strncmp(const char *a, const char *b, int n)
 {
     int i = 0;
@@ -224,54 +217,59 @@ static BOOL get_log_size(const char *savePath, DWORD *outSize)
     return TRUE;
 }
 
-/* Scan log.txt bytes in [from_offset, end) for a marker.
-   Returns TRUE when found. Only the freshly-appended part is checked, so
-   previous launches' logs never cause a false positive. */
-static BOOL marker_since(const char *savePath, DWORD from_offset, const char *tag)
+/* Read the log.txt range [from_offset, end) into a NUL-terminated buffer.
+   Returns malloc'd buffer (caller frees) or NULL on any failure.
+   The game appends to log.txt while we read, so use FILE_SHARE_WRITE. */
+static char *read_log_range(const char *savePath, DWORD from_offset, DWORD *out_len)
 {
     char logPath[MAX_PATH];
     char *buf;
     HANDLE h;
     DWORD size, rd = 0, len;
-    BOOL ok, found;
 
     build_path(logPath, sizeof(logPath), savePath, "\\log.txt");
     h = CreateFileA(logPath, GENERIC_READ,
                     FILE_SHARE_READ | FILE_SHARE_WRITE,
                     NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (h == INVALID_HANDLE_VALUE)
-        return FALSE;
+        return NULL;
 
     size = GetFileSize(h, NULL);
     if (size == INVALID_FILE_SIZE || size <= from_offset) {
         CloseHandle(h);
-        return FALSE;
+        return NULL;
     }
     len = size - from_offset;
     if (len > MAX_SCAN) len = MAX_SCAN;
 
     buf = (char*)malloc(len + 1);
-    if (!buf) { CloseHandle(h); return FALSE; }
+    if (!buf) { CloseHandle(h); return NULL; }
 
     SetFilePointer(h, from_offset, NULL, FILE_BEGIN);
-    ok = ReadFile(h, buf, len, &rd, NULL);
+    if (!ReadFile(h, buf, len, &rd, NULL)) {
+        CloseHandle(h);
+        free(buf);
+        return NULL;
+    }
     CloseHandle(h);
-    if (!ok) { free(buf); return FALSE; }
     buf[rd] = 0;
+    if (out_len) *out_len = rd;
+    return buf;
+}
 
+/* Scan log.txt bytes in [from_offset, end) for a marker.
+   Returns TRUE when found. Only the freshly-appended part is checked, so
+   previous launches' logs never cause a false positive. */
+static BOOL marker_since(const char *savePath, DWORD from_offset, const char *tag)
+{
+    DWORD rd = 0;
+    char *buf = read_log_range(savePath, from_offset, &rd);
+    BOOL found;
+    if (!buf)
+        return FALSE;
     found = contains(buf, tag);
     free(buf);
     return found;
-}
-
-static BOOL mod_loaded_since(const char *savePath, DWORD from_offset)
-{
-    return marker_since(savePath, from_offset, MOD_TAG);
-}
-
-static BOOL run_started_since(const char *savePath, DWORD from_offset)
-{
-    return marker_since(savePath, from_offset, RUN_TAG);
 }
 
 /* Find the byte offset of the FIRST occurrence of tag in log.txt at/after
@@ -279,36 +277,13 @@ static BOOL run_started_since(const char *savePath, DWORD from_offset)
 static BOOL find_marker_pos(const char *savePath, DWORD from_offset,
                             const char *tag, DWORD *out_pos)
 {
-    char logPath[MAX_PATH];
-    char *buf;
-    HANDLE h;
-    DWORD size, rd = 0, len;
-    BOOL ok, found = FALSE;
+    DWORD rd = 0;
+    char *buf = read_log_range(savePath, from_offset, &rd);
+    BOOL found = FALSE;
     int i, j;
 
-    build_path(logPath, sizeof(logPath), savePath, "\\log.txt");
-    h = CreateFileA(logPath, GENERIC_READ,
-                    FILE_SHARE_READ | FILE_SHARE_WRITE,
-                    NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-    if (h == INVALID_HANDLE_VALUE)
+    if (!buf)
         return FALSE;
-
-    size = GetFileSize(h, NULL);
-    if (size == INVALID_FILE_SIZE || size <= from_offset) {
-        CloseHandle(h);
-        return FALSE;
-    }
-    len = size - from_offset;
-    if (len > MAX_SCAN) len = MAX_SCAN;
-
-    buf = (char*)malloc(len + 1);
-    if (!buf) { CloseHandle(h); return FALSE; }
-
-    SetFilePointer(h, from_offset, NULL, FILE_BEGIN);
-    ok = ReadFile(h, buf, len, &rd, NULL);
-    CloseHandle(h);
-    if (!ok) { free(buf); return FALSE; }
-    buf[rd] = 0;
 
     int nl = my_strlen(tag);
     if (nl > 0) {
@@ -324,6 +299,16 @@ static BOOL find_marker_pos(const char *savePath, DWORD from_offset,
     }
     free(buf);
     return found;
+}
+
+static BOOL mod_loaded_since(const char *savePath, DWORD from_offset)
+{
+    return marker_since(savePath, from_offset, MOD_TAG);
+}
+
+static BOOL run_started_since(const char *savePath, DWORD from_offset)
+{
+    return marker_since(savePath, from_offset, RUN_TAG);
 }
 
 /* ====================================================================
