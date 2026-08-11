@@ -100,13 +100,12 @@ A: 本 Mod 所有可执行文件都通过了 VirusTotal 扫描。如果被杀软
 
 1. **ime_patcher.exe**：PE 导入表补丁工具。修改 `isaac-ng.exe` 的导入表，让 Windows 加载器在游戏启动时自动加载 `ime_fix.dll`。类似官中补丁的做法，一次性修改，自动备份原文件。内置官中补丁 config.ini 处理（check=-1，消除弹窗）。
 
-2. **ime_fix.dll**：输入法管理器。启动后在工作线程轮询存档目录的 log.txt：
-   - 记录启动时 log.txt 大小（基线）
-   - 扫描**新增部分**是否出现 `Running Lua Script: .../ime-conflict-fix/main.lua`（游戏只在 mod 真正执行时写这行，`LOADED MOD` 枚举不可靠）
-   - 找到 → 调用 `ImmDisableIME(-1)` 禁用输入法（主菜单即生效）
-   - 30 秒未找到（mod 禁用/未执行）→ 不做任何事
+2. **ime_fix.dll**：输入法管理器。启动后在工作线程轮询存档目录的 log.txt（记录基线，只扫描新增部分），分两阶段检测：
+   - **阶段 1（启动窗口 ~12 秒）**：扫描是否出现 `Running Lua Script: .../ime-conflict-fix/main.lua`（游戏只在 mod 真正执行时写这行，`LOADED MOD` 枚举不可靠）→ 找到立即 `ImmDisableIME(-1)`（主菜单即生效）
+   - **阶段 2（启动窗口后）**：若 mod 在游戏内才被启用（log 出现 `Menu Mods Init` 之后的 mod 标记）→ 等 `AnmCache: Clear`（mod 重载完成、回到主菜单）→ 禁用；或等开局信号 `[IME_RUN_STARTED]` → 开局禁用
+   - mod 全程禁用/未执行 → 不做任何事
 
-3. **Lua Mod**（创意工坊）：极简——只负责被游戏执行并留下 `main.lua` 执行日志，作为 DLL 的"mod 已启用"信号。
+3. **Lua Mod**（创意工坊）：极简——被游戏执行时留下 `main.lua` 执行日志（阶段 1 信号），并在开局时写 `[IME_RUN_STARTED]`（阶段 2 信号）。
 
 为什么用 log.txt 信号而不是直接启动时禁用？因为 `ImmDisableIME(-1)` 是**不可逆**的，一旦调用就无法在进程内重新启用。必须确认 mod 已启用（= 用户需要禁用 IME）才调用。
 
