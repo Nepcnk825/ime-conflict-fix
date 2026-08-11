@@ -38,10 +38,13 @@
 
 #define MOD_TAG "ime-conflict-fix/main.lua" /* Lua mod entry; logged only when the mod EXECUTES */
 #define RUN_TAG "[IME_RUN_STARTED]"         /* Lua mod per-run marker (MC_POST_GAME_STARTED) */
+#define MODS_MENU_TAG "Menu Mods Init"      /* logged when user enters the Mods menu */
+#define RELOAD_DONE_TAG "AnmCache: Clear"   /* logged when a mod reload finishes */
 #define MAX_SCAN 65536             /* cap for appended log.txt scan window */
 #define POLL_WINDOW_S 12           /* only poll during the game's mod-load window */
 #define POLL_INTERVAL_MS 2000      /* startup-window poll interval */
 #define RUN_POLL_MS 3000           /* per-run marker poll interval (after window) */
+#define STABLE_MS 3000             /* log-stability window before disabling after a reload */
 
 /* ====================================================================
  * Minimal string helpers (no CRT: no strlen/strcmp/strstr/strcat)
@@ -270,6 +273,58 @@ static BOOL run_started_since(const char *savePath, DWORD from_offset)
     return marker_since(savePath, from_offset, RUN_TAG);
 }
 
+/* Find the byte offset of the FIRST occurrence of tag in log.txt at/after
+   from_offset. Returns TRUE and fills *out_pos when found. */
+static BOOL find_marker_pos(const char *savePath, DWORD from_offset,
+                            const char *tag, DWORD *out_pos)
+{
+    char logPath[MAX_PATH];
+    char *buf;
+    HANDLE h;
+    DWORD size, rd = 0, len;
+    BOOL ok, found = FALSE;
+    int i, j;
+
+    build_path(logPath, sizeof(logPath), savePath, "\\log.txt");
+    h = CreateFileA(logPath, GENERIC_READ,
+                    FILE_SHARE_READ | FILE_SHARE_WRITE,
+                    NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (h == INVALID_HANDLE_VALUE)
+        return FALSE;
+
+    size = GetFileSize(h, NULL);
+    if (size == INVALID_FILE_SIZE || size <= from_offset) {
+        CloseHandle(h);
+        return FALSE;
+    }
+    len = size - from_offset;
+    if (len > MAX_SCAN) len = MAX_SCAN;
+
+    buf = (char*)malloc(len + 1);
+    if (!buf) { CloseHandle(h); return FALSE; }
+
+    SetFilePointer(h, from_offset, NULL, FILE_BEGIN);
+    ok = ReadFile(h, buf, len, &rd, NULL);
+    CloseHandle(h);
+    if (!ok) { free(buf); return FALSE; }
+    buf[rd] = 0;
+
+    int nl = my_strlen(tag);
+    if (nl > 0) {
+        for (i = 0; i + nl <= (int)rd; i++) {
+            for (j = 0; j < nl; j++)
+                if (buf[i + j] != tag[j]) break;
+            if (j == nl) {
+                *out_pos = from_offset + (DWORD)i;
+                found = TRUE;
+                break;
+            }
+        }
+    }
+    free(buf);
+    return found;
+}
+
 /* ====================================================================
  * Worker thread
  * ==================================================================== */
@@ -316,18 +371,52 @@ static DWORD WINAPI worker(LPVOID param)
     }
 
     /* Phase 2: mod was NOT enabled at launch (e.g. user enabled it in-game
-       after the startup window). Don't give up entirely - the user may still
-       start a single-player run, which NEEDS the IME disabled. Listen for the
-       per-run marker "[IME_RUN_STARTED]" written by the Lua mod on
-       MC_POST_GAME_STARTED. That fires only after the game is fully loaded
-       (post-mod-reload, input idle), so calling ImmDisableIME there is safe
-       and does NOT freeze the UI. */
-    ime_log("main", "mod not enabled at launch - waiting for per-run marker");
+       after the startup window). The user still needs the IME disabled once
+       they actually play. Wait for one of two safe triggers:
+         a) "[IME_RUN_STARTED]" - Lua mod fires it on MC_POST_GAME_STARTED,
+            i.e. after the game has fully loaded a run (input idle) -> safe.
+         b) An in-game mod toggle: "ime-conflict-fix/main.lua" re-appears in
+            the log AFTER "Menu Mods Init" (user toggled mods in the Mods
+            menu). Disabling immediately would freeze the UI mid-reload, so
+            wait for "AnmCache: Clear" (reload done) plus the log to stop
+            growing for ~3s (game back at main menu, input idle) -> safe. */
+    ime_log("main", "mod not enabled at launch - monitoring for safe disable trigger");
     for (;;) {
+        /* Trigger a): a single-player run started. */
         if (run_started_since(savePath, baseline)) {
             ImmDisableIME(-1);
             ime_log("main", "per-run marker - IME disabled at run start");
             return 0;
+        }
+
+        /* Trigger b): user toggled mods in-game (marker after Mods menu). */
+        DWORD menu_pos = 0;
+        BOOL in_menu = find_marker_pos(savePath, baseline, MODS_MENU_TAG, &menu_pos);
+        if (in_menu && mod_loaded_since(savePath, menu_pos)) {
+            ime_log("main", "mod toggled in-game - waiting for reload to settle");
+            /* Wait until log stops growing (reload finished, back at menu). */
+            DWORD prev = 0, cur = 0;
+            get_log_size(savePath, &prev);
+            int stable_ticks = 0;
+            for (;;) {
+                Sleep(1000);
+                if (run_started_since(savePath, baseline)) {
+                    ImmDisableIME(-1);
+                    ime_log("main", "per-run marker - IME disabled at run start");
+                    return 0;
+                }
+                get_log_size(savePath, &cur);
+                if (cur == prev) {
+                    if (++stable_ticks >= STABLE_MS / 1000) {
+                        ImmDisableIME(-1);
+                        ime_log("main", "mod toggled in-game - IME disabled after reload settled");
+                        return 0;
+                    }
+                } else {
+                    stable_ticks = 0;
+                    prev = cur;
+                }
+            }
         }
         Sleep(RUN_POLL_MS);
     }
