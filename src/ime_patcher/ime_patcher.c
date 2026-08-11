@@ -236,7 +236,7 @@ static int do_patch(const char *path)
 
     printf("Section: raw_sz=0x%X virt_sz=0x%X off=%d\n", ns->SizeOfRawData, ns->Misc.VirtualSize, off);
 
-    /* Write ? seek to new_raw before writing section data */
+    /* Write: seek to new_raw before writing section data */
     HANDLE out = CreateFileA(path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, NULL);
     if (out == INVALID_HANDLE_VALUE) { printf("ERROR: write\n"); free(buf); return 1; }
     DWORD wr;
