@@ -1,4 +1,4 @@
-﻿-- IME Conflict Fix for The Binding of Isaac: Repentance+
+-- IME Conflict Fix for The Binding of Isaac: Repentance+
 -- Version: 0.2.0
 --
 -- Dual-signal Lua mod:
