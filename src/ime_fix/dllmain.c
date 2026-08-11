@@ -14,7 +14,13 @@
  *   3. scans the NEWLY-APPENDED log.txt content for "ime-conflict-fix/main.lua";
  *      if found, the Lua mod executed this launch -> IMMEDIATELY call
  *      ImmDisableIME(-1) (works at the main menu, not only in a run).
- *   4. if not found (mod disabled or EnableMods=0), do nothing.
+ *   4. if not found within the ~12s startup window (mod disabled or
+ *      EnableMods=0), do nothing.
+ *
+ * The 12s cap is important: the game re-loads all mods if the user toggles
+ * them in the Mods menu mid-session, which would re-log our marker. Calling
+ * ImmDisableIME then, while the game is busy reloading mods, freezes the UI.
+ * Restricting detection to the boot window avoids that entirely.
  *
  * NOTE: ImmDisableIME(-1) is IRREVERSIBLE - it disables the IME for the
  * whole process and cannot be re-enabled in-game. That is the accepted
@@ -33,6 +39,8 @@
 
 #define MOD_TAG "ime-conflict-fix/main.lua" /* Lua mod entry; logged only when the mod EXECUTES */
 #define MAX_SCAN 65536             /* cap for appended log.txt scan window */
+#define POLL_WINDOW_S 12           /* only poll during the game's mod-load window */
+#define POLL_INTERVAL_MS 2000      /* seconds between scans */
 
 /* ====================================================================
  * Minimal string helpers (no CRT: no strlen/strcmp/strstr/strcat)
@@ -280,17 +288,23 @@ static DWORD WINAPI worker(LPVOID param)
     wsprintfA(buf, "log.txt baseline size: %d", (int)baseline);
     ime_log("main", buf);
 
-    /* Poll for up to ~30s for the game to load mods and log our mod. */
-    for (attempts = 0; attempts < 15; attempts++) {
+    /* Poll ONLY during the startup mod-load window (~12s). The game loads
+       its mods within this time; disabling IME here is safe because the
+       input system is idle at boot. Deliberately NOT polling for 30s: if
+       the user toggles mods in-game (Mods menu), the game re-loads all mods
+       and our marker appears again - calling ImmDisableIME then, while the
+       game is busy reloading and processing input, freezes the UI. */
+    int max_attempts = POLL_WINDOW_S * 1000 / POLL_INTERVAL_MS;
+    for (attempts = 0; attempts < max_attempts; attempts++) {
         if (mod_loaded_since(savePath, baseline)) {
             ImmDisableIME(-1);
             ime_log("main", "mod enabled - IME disabled at startup");
             return 0;
         }
-        Sleep(2000);
+        Sleep(POLL_INTERVAL_MS);
     }
 
-    ime_log("main", "mod not detected within 30s - IME stays enabled");
+    ime_log("main", "mod not detected in startup window - IME stays enabled");
     return 0;
 }
 
