@@ -1,0 +1,17 @@
+# ===== Build artifacts (MSVC) =====
+*.obj
+*.lib
+*.exp
+*.dll
+*.exe
+*.pdb
+*.ilk
+
+# ===== Local tool state (never commit) =====
+.codegraph/
+.omo/
+.sisyphus/
+
+# ===== OS noise =====
+Thumbs.db
+Desktop.ini
