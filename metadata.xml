@@ -1,0 +1,7 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<metadata>
+    <name>IME Conflict Fix</name>
+    <directory>ime-conflict-fix</directory>
+    <description>自动修复以撒的结合与中文输入法的键盘冲突问题</description>
+    <version>0.1</version>
+</metadata>
