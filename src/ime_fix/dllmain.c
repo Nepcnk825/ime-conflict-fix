@@ -9,11 +9,13 @@
  *   found, IMMEDIATELY call ImmDisableIME(-1) (works at the main menu).
  *
  *   Phase 2 (after window): the mod may have been enabled mid-session
- *   (disabled at launch, toggled on in the Mods menu). The startup window
- *   has passed, so instead listen for the per-run marker "[IME_RUN_STARTED]"
- *   that the Lua mod writes on MC_POST_GAME_STARTED. Disabling there is safe
- *   (game fully loaded, input idle) and covers the "enabled in-game then
- *   started a single-player run" case.
+ *   (disabled at launch, toggled on in the Mods menu). Listen for:
+ *     - the per-run marker "[IME_RUN_STARTED]" (MC_POST_GAME_STARTED), or
+ *     - an in-game mod toggle: the mod marker re-appearing AFTER "Menu Mods
+ *       Init", followed by the reload-complete signal "AnmCache: Clear".
+ *       Once reload finishes the game is back at the main menu with input
+ *       idle, so disabling there is safe (no UI freeze) and happens right
+ *       when the user returns from the Mods page - before starting a run.
  *
  * NOTE: the 12s startup-window cap in Phase 1 is important - the game
  * re-loads all mods if the user toggles them in the Mods menu mid-session,
@@ -44,7 +46,6 @@
 #define POLL_WINDOW_S 12           /* only poll during the game's mod-load window */
 #define POLL_INTERVAL_MS 2000      /* startup-window poll interval */
 #define RUN_POLL_MS 3000           /* per-run marker poll interval (after window) */
-#define STABLE_MS 3000             /* log-stability window before disabling after a reload */
 
 /* ====================================================================
  * Minimal string helpers (no CRT: no strlen/strcmp/strstr/strcat)
@@ -389,32 +390,31 @@ static DWORD WINAPI worker(LPVOID param)
             return 0;
         }
 
-        /* Trigger b): user toggled mods in-game (marker after Mods menu). */
+        /* Trigger b): user toggled mods in-game (marker after Mods menu).
+           Disabling IMMEDIATELY while the game is mid-reload freezes the UI,
+           so wait for the reload-complete signal "AnmCache: Clear" that the
+           game logs right after all mods finish loading (before any user
+           action like starting a run). At that point the game is back at the
+           main menu with the input system idle - safe to disable, and fast
+           enough that starting a run right away still gets IME off first. */
         DWORD menu_pos = 0;
         BOOL in_menu = find_marker_pos(savePath, baseline, MODS_MENU_TAG, &menu_pos);
-        if (in_menu && mod_loaded_since(savePath, menu_pos)) {
-            ime_log("main", "mod toggled in-game - waiting for reload to settle");
-            /* Wait until log stops growing (reload finished, back at menu). */
-            DWORD prev = 0, cur = 0;
-            get_log_size(savePath, &prev);
-            int stable_ticks = 0;
-            for (;;) {
-                Sleep(1000);
-                if (run_started_since(savePath, baseline)) {
-                    ImmDisableIME(-1);
-                    ime_log("main", "per-run marker - IME disabled at run start");
-                    return 0;
-                }
-                get_log_size(savePath, &cur);
-                if (cur == prev) {
-                    if (++stable_ticks >= STABLE_MS / 1000) {
+        if (in_menu) {
+            DWORD mod_pos = 0;
+            if (find_marker_pos(savePath, menu_pos, MOD_TAG, &mod_pos)) {
+                ime_log("main", "mod toggled in-game - waiting for reload to finish");
+                for (;;) {
+                    Sleep(500);
+                    if (run_started_since(savePath, baseline)) {
                         ImmDisableIME(-1);
-                        ime_log("main", "mod toggled in-game - IME disabled after reload settled");
+                        ime_log("main", "per-run marker - IME disabled at run start");
                         return 0;
                     }
-                } else {
-                    stable_ticks = 0;
-                    prev = cur;
+                    if (marker_since(savePath, mod_pos, RELOAD_DONE_TAG)) {
+                        ImmDisableIME(-1);
+                        ime_log("main", "mod toggled in-game - IME disabled after reload finished");
+                        return 0;
+                    }
                 }
             }
         }
