@@ -2,25 +2,24 @@
  * ime_fix.dll - IME management for The Binding of Isaac: Repentance+
  *
  * Startup-time IME disabling based on whether the companion Lua mod is
- * enabled. When the mod is enabled, the game executes its main.lua at
- * startup and logs "Running Lua Script: .../ime-conflict-fix/main.lua"
- * in log.txt. NOTE: "LOADED MOD .../ime-conflict-fix/..." is NOT a
- * reliable signal - the game enumerates mod folders even when mods are
- * disabled (EnableMods=0), but only logs "Running Lua Script" for mods
- * that actually execute. So this DLL:
+ * enabled. Two phases:
  *
- *   1. records the log.txt size at process start (baseline),
- *   2. waits for the game to load its mods,
- *   3. scans the NEWLY-APPENDED log.txt content for "ime-conflict-fix/main.lua";
- *      if found, the Lua mod executed this launch -> IMMEDIATELY call
- *      ImmDisableIME(-1) (works at the main menu, not only in a run).
- *   4. if not found within the ~12s startup window (mod disabled or
- *      EnableMods=0), do nothing.
+ *   Phase 1 (startup window, ~12s): the game logs "Running Lua Script:
+ *   .../ime-conflict-fix/main.lua" when it executes our mod at launch. If
+ *   found, IMMEDIATELY call ImmDisableIME(-1) (works at the main menu).
  *
- * The 12s cap is important: the game re-loads all mods if the user toggles
- * them in the Mods menu mid-session, which would re-log our marker. Calling
- * ImmDisableIME then, while the game is busy reloading mods, freezes the UI.
- * Restricting detection to the boot window avoids that entirely.
+ *   Phase 2 (after window): the mod may have been enabled mid-session
+ *   (disabled at launch, toggled on in the Mods menu). The startup window
+ *   has passed, so instead listen for the per-run marker "[IME_RUN_STARTED]"
+ *   that the Lua mod writes on MC_POST_GAME_STARTED. Disabling there is safe
+ *   (game fully loaded, input idle) and covers the "enabled in-game then
+ *   started a single-player run" case.
+ *
+ * NOTE: the 12s startup-window cap in Phase 1 is important - the game
+ * re-loads all mods if the user toggles them in the Mods menu mid-session,
+ * which would re-log the "Running Lua Script" marker. Calling ImmDisableIME
+ * then, while the game is busy reloading mods, freezes the UI. Restricting
+ * Phase-1 detection to the boot window avoids that entirely.
  *
  * NOTE: ImmDisableIME(-1) is IRREVERSIBLE - it disables the IME for the
  * whole process and cannot be re-enabled in-game. That is the accepted
@@ -38,9 +37,11 @@
 #pragma comment(lib, "user32.lib")
 
 #define MOD_TAG "ime-conflict-fix/main.lua" /* Lua mod entry; logged only when the mod EXECUTES */
+#define RUN_TAG "[IME_RUN_STARTED]"         /* Lua mod per-run marker (MC_POST_GAME_STARTED) */
 #define MAX_SCAN 65536             /* cap for appended log.txt scan window */
 #define POLL_WINDOW_S 12           /* only poll during the game's mod-load window */
-#define POLL_INTERVAL_MS 2000      /* seconds between scans */
+#define POLL_INTERVAL_MS 2000      /* startup-window poll interval */
+#define RUN_POLL_MS 3000           /* per-run marker poll interval (after window) */
 
 /* ====================================================================
  * Minimal string helpers (no CRT: no strlen/strcmp/strstr/strcat)
@@ -219,10 +220,10 @@ static BOOL get_log_size(const char *savePath, DWORD *outSize)
     return TRUE;
 }
 
-/* Scan log.txt bytes in [from_offset, end) for our Lua mod's load marker.
+/* Scan log.txt bytes in [from_offset, end) for a marker.
    Returns TRUE when found. Only the freshly-appended part is checked, so
    previous launches' logs never cause a false positive. */
-static BOOL mod_loaded_since(const char *savePath, DWORD from_offset)
+static BOOL marker_since(const char *savePath, DWORD from_offset, const char *tag)
 {
     char logPath[MAX_PATH];
     char *buf;
@@ -254,9 +255,19 @@ static BOOL mod_loaded_since(const char *savePath, DWORD from_offset)
     if (!ok) { free(buf); return FALSE; }
     buf[rd] = 0;
 
-    found = contains(buf, MOD_TAG);
+    found = contains(buf, tag);
     free(buf);
     return found;
+}
+
+static BOOL mod_loaded_since(const char *savePath, DWORD from_offset)
+{
+    return marker_since(savePath, from_offset, MOD_TAG);
+}
+
+static BOOL run_started_since(const char *savePath, DWORD from_offset)
+{
+    return marker_since(savePath, from_offset, RUN_TAG);
 }
 
 /* ====================================================================
@@ -288,12 +299,12 @@ static DWORD WINAPI worker(LPVOID param)
     wsprintfA(buf, "log.txt baseline size: %d", (int)baseline);
     ime_log("main", buf);
 
-    /* Poll ONLY during the startup mod-load window (~12s). The game loads
-       its mods within this time; disabling IME here is safe because the
-       input system is idle at boot. Deliberately NOT polling for 30s: if
-       the user toggles mods in-game (Mods menu), the game re-loads all mods
-       and our marker appears again - calling ImmDisableIME then, while the
-       game is busy reloading and processing input, freezes the UI. */
+    /* Phase 1: poll ONLY during the startup mod-load window (~12s). The
+       game loads its mods within this time; disabling IME here is safe
+       because the input system is idle at boot. Deliberately short: if the
+       user toggles mods in-game (Mods menu), the game re-loads all mods and
+       our marker appears again - calling ImmDisableIME then, while the game
+       is busy reloading and processing input, freezes the UI. */
     int max_attempts = POLL_WINDOW_S * 1000 / POLL_INTERVAL_MS;
     for (attempts = 0; attempts < max_attempts; attempts++) {
         if (mod_loaded_since(savePath, baseline)) {
@@ -304,8 +315,22 @@ static DWORD WINAPI worker(LPVOID param)
         Sleep(POLL_INTERVAL_MS);
     }
 
-    ime_log("main", "mod not detected in startup window - IME stays enabled");
-    return 0;
+    /* Phase 2: mod was NOT enabled at launch (e.g. user enabled it in-game
+       after the startup window). Don't give up entirely - the user may still
+       start a single-player run, which NEEDS the IME disabled. Listen for the
+       per-run marker "[IME_RUN_STARTED]" written by the Lua mod on
+       MC_POST_GAME_STARTED. That fires only after the game is fully loaded
+       (post-mod-reload, input idle), so calling ImmDisableIME there is safe
+       and does NOT freeze the UI. */
+    ime_log("main", "mod not enabled at launch - waiting for per-run marker");
+    for (;;) {
+        if (run_started_since(savePath, baseline)) {
+            ImmDisableIME(-1);
+            ime_log("main", "per-run marker - IME disabled at run start");
+            return 0;
+        }
+        Sleep(RUN_POLL_MS);
+    }
 }
 
 BOOL WINAPI DllMain(HINSTANCE h, DWORD r, LPVOID x)
