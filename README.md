@@ -33,8 +33,21 @@
   ```bat
   cd src\ime_fix      && build.bat    :: 生成 ime_fix.dll
   cd src\ime_patcher  && build.bat    :: 生成 ime_patcher.exe
-  ```
-  构建产物放在同一目录。
+   ```
+   构建产物放在同一目录。
+
+> **可复现构建验证**：构建脚本使用 `/Brepro`（确定性编译），任何人用相同源码 + Visual Studio 2022 构建，应得到与下列校验码一致的二进制。构建后可用以下命令比对：
+> ```bat
+> certutil -hashfile ime_fix.dll MD5
+> certutil -hashfile ime_patcher.exe MD5
+> ```
+>
+> **v0.2.0 源码构建的参考校验码**：
+>
+> | 文件 | MD5 | SHA256 |
+> |------|-----|--------|
+> | ime_fix.dll (84,992 B) | `6CC9DCD26835E8C95E95D064AD031FC7` | `188B942D380737B5CB0CD621DD31775612F162C6E95894E5902F306F1B6B2DC6` |
+> | ime_patcher.exe (134,656 B) | `B45FB3E28D485DF2F159A75155F4BC3D` | `3E90C5E9B87C2517C179A9D95161D638D2DC6046D5422BD370CF6DAC8DF45079` |
 
 ### 打补丁（一次性，全自动）
 

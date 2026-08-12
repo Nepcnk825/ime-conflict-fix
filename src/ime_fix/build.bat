@@ -61,7 +61,7 @@ call "!VSPATH!" || (
 echo [INFO] Compiling ime_fix sources ...
 echo.
 
-cl.exe /nologo /O2 /MT /GS- /utf-8 /LD /Fe:ime_fix.dll dllmain.c /link /SUBSYSTEM:WINDOWS /MACHINE:X86 user32.lib kernel32.lib imm32.lib /EXPORT:IME_Init
+cl.exe /nologo /O2 /MT /GS- /utf-8 /LD /Fe:ime_fix.dll dllmain.c /link /SUBSYSTEM:WINDOWS /MACHINE:X86 /Brepro user32.lib kernel32.lib imm32.lib /EXPORT:IME_Init
 
 if %ERRORLEVEL% neq 0 (
     echo.
