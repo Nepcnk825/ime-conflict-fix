@@ -12,6 +12,9 @@
 .omo/
 .sisyphus/
 
+# ===== Workshop upload staging (user templates/tools, never commit) =====
+workshop_upload/
+
 # ===== OS noise =====
 Thumbs.db
 Desktop.ini
