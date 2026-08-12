@@ -29,21 +29,23 @@
 1. 克隆本仓库到本地
 2. **自行构建**（需要 Visual Studio 2022）：
    ```bat
-   cd src\ime_fix      && build.bat    :: 生成 ime_fix.dll
+   cd src\ime_fix      && build.bat    :: 生成 ime_fix.dll（功能 DLL，发布为 ime_fix.bin）
+   cd src\ime_loader   && build.bat    :: 生成 ime_loader.dll（加载器/更新器）
    cd src\ime_patcher  && build.bat    :: 生成 ime_patcher.exe
    ```
    构建产物放在同一目录
-3. 打开游戏的 mods 文件夹（Steam 库 -> 右键以撒 -> 管理 -> 浏览本地文件 -> 进入 `mods/` 目录），**自行新建一个文件夹并命名为 `ime-conflict-fix`**，把仓库中的 `main.lua` + `metadata.xml` 复制进去
+3. 打开游戏的 mods 文件夹（Steam 库 -> 右键以撒 -> 管理 -> 浏览本地文件 -> 进入 `mods/` 目录），**自行新建一个文件夹并命名为 `ime-conflict-fix`**，把仓库中的 `main.lua` + `metadata.xml` 复制进去，并把 `ime_fix.dll` 重命名为 `ime_fix.bin` 一并放入（作为自更新源）
 4. 运行 `ime_patcher.exe` 打补丁（见下方"打补丁"）
 5. 启动游戏，在主菜单 Mods 菜单中启用 "IME Conflict Fix"
 
 ### 获取打补丁工具
 
-由于本仓库只发布源代码（不提供预构建二进制，有意审查者可从源码自行构建），`ime_patcher.exe` 和 `ime_fix.dll` 需要自行构建（见上方方式二第 2 步）。
+由于本仓库只发布源代码（不提供预构建二进制，有意审查者可从源码自行构建），`ime_patcher.exe`、`ime_loader.dll` 和 `ime_fix.dll` 需要自行构建（见上方方式二第 2 步）。
 
 > **可复现构建验证**：构建脚本使用 `/Brepro`（确定性编译），任何人用相同源码 + Visual Studio 2022 构建，应得到与下列校验码一致的二进制。构建后可用以下命令比对：
 > ```bat
 > certutil -hashfile ime_fix.dll MD5
+> certutil -hashfile ime_loader.dll MD5
 > certutil -hashfile ime_patcher.exe MD5
 > ```
 >
@@ -52,14 +54,15 @@
 > | 文件 | MD5 | SHA256 |
 > |------|-----|--------|
 > | ime_fix.dll (84,992 B) | `6CC9DCD26835E8C95E95D064AD031FC7` | `188B942D380737B5CB0CD621DD31775612F162C6E95894E5902F306F1B6B2DC6` |
-> | ime_patcher.exe (134,656 B) | `B45FB3E28D485DF2F159A75155F4BC3D` | `3E90C5E9B87C2517C179A9D95161D638D2DC6046D5422BD370CF6DAC8DF45079` |
+> | ime_loader.dll (82,944 B) | `2D82BBA61A87E6D76BBDFFCF45CD720D` | `42EC167989CED013CE63911A7F7EA1047A1E965B783C3A88EAE6AF1F2D11580F` |
+> | ime_patcher.exe (135,168 B) | `9A44025DBF85D479A6D6544BCE80C9F8` | `66F7A2F631107C5D2F4D1C4B55EA189E439CDE4FAD9DA73251813A6BD661902A` |
 
 ### 打补丁（一次性，全自动）
 
 **双击运行 `ime_patcher.exe`**。它会自动从 Steam 注册表找到以撒的游戏目录，弹出确认框，点"是"即完成：
 
 - 自动给 `isaac-ng.exe` 打补丁（备份为 `isaac-ng.exe.imefix.bak`）
-- **自动把 `ime_fix.dll` 复制到游戏目录**
+- **自动把 `ime_loader.dll` 复制到游戏目录**（它负责在启动时把创意工坊的 `ime_fix.bin` 同步为 `ime_fix.dll` 并加载，实现免重打补丁的自动更新）
 - 如果装有官中补丁，会自动把其 config.ini 的 check 改为 -1（消除启动校验弹窗）
 
 全程无需手动操作。**这个步骤只需要做一次**，不需要每次启动游戏都运行。
@@ -83,7 +86,7 @@
 **双击运行 `ime_patcher.exe`，选中已补丁的 `isaac-ng.exe`**，自动还原。卸载时会自动：
 
 1. 用 `isaac-ng.exe.imefix.bak` 还原 exe（官中补丁的 bootstp 导入会保留，汉化不受影响）
-2. 自动删除游戏目录中的 `ime_fix.dll`
+2. 自动删除游戏目录中的 `ime_loader.dll` 和 `ime_fix.dll`
 3. 自动恢复官中补丁 config.ini 的 check 原值（如果安装时改过）
 4. **完全清理**：还原后 exe 与官方原版 MD5 完全一致，无任何残留
 
@@ -109,10 +112,10 @@ A: **忏悔+官中补丁：实测可共用，且无安装顺序要求**（先装
 A: **需要**。Steam 更新游戏时会用新的 exe 覆盖旧的，之前的补丁就没了。更新后重新运行一次 `ime_patcher.exe` 即可（一分钟搞定）。
 
 ### Q: Mod 更新后需要重新打补丁吗？
-A: **不需要**。Mod 更新只涉及 Lua 脚本或 DLL 文件，不会改变 exe 的补丁；只有当**游戏本体**更新（Steam 覆盖 exe）时才需要重新打补丁。
+A: **不需要**。Mod 更新（Lua 脚本或 DLL）都会通过 Steam 自动同步到 `mods/ime-conflict-fix/`，游戏启动时 `ime_loader.dll` 会自动把新的 `ime_fix.bin` 覆盖到游戏目录的 `ime_fix.dll`，全程无感。只有**游戏本体**更新（Steam 覆盖 exe）时才需要重新打补丁。
 
 ### Q: 这个补丁会改坏游戏吗？
-A: 不会。`ime_patcher.exe` 只往 exe 的导入表里加一个条目，让游戏启动时自动加载 `ime_fix.dll`。打补丁前会自动生成 `isaac-ng.exe.bak` 备份，随时可以还原。**即使出现问题，也可以在 Steam 里对以撒右键 -> 属性 -> 已安装文件 -> 验证游戏文件完整性**，即可恢复官方原版文件。
+A: 不会。`ime_patcher.exe` 只往 exe 的导入表里加一个条目，让游戏启动时自动加载 `ime_loader.dll`（它再加载 `ime_fix.dll`）。打补丁前会自动生成 `isaac-ng.exe.bak` 备份，随时可以还原。**即使出现问题，也可以在 Steam 里对以撒右键 -> 属性 -> 已安装文件 -> 验证游戏文件完整性**，即可恢复官方原版文件。
 
 ### Q: 为什么需要 DLL？其他 Mod 不需要啊。
 A: 输入法管理需要操作系统层面的 API，以撒的 Lua Mod API 做不到这件事。所以本 Mod 用补丁的方式让游戏启动时自动加载一个 DLL 来完成。DLL 是纯 Windows API 实现的，没有运行时依赖，而且全程不联网、不注入其他进程。
@@ -133,18 +136,20 @@ A: 本项目**未做过 VirusTotal 等第三方扫描认证**。二进制文件�
 
 ## 技术原理（给想了解的人）
 
-> 以下为简略描述，供快速了解大致思路。想要深入了解实现细节，请直接阅读源码：[src/ime_fix](https://github.com/Nepcnk825/ime-conflict-fix/tree/main/src/ime_fix)（输入法管理 DLL）与 [src/ime_patcher](https://github.com/Nepcnk825/ime-conflict-fix/tree/main/src/ime_patcher)（补丁工具）。
+> 以下为简略描述，供快速了解大致思路。想要深入了解实现细节，请直接阅读源码：[src/ime_fix](https://github.com/Nepcnk825/ime-conflict-fix/tree/main/src/ime_fix)（输入法管理 DLL）、[src/ime_loader](https://github.com/Nepcnk825/ime-conflict-fix/tree/main/src/ime_loader)（加载器/更新器）与 [src/ime_patcher](https://github.com/Nepcnk825/ime-conflict-fix/tree/main/src/ime_patcher)（补丁工具）。
 
-整个方案由三个部分组成：
+整个方案由四个部分组成：
 
-1. **ime_patcher.exe**：PE 导入表补丁工具。修改 `isaac-ng.exe` 的导入表，让 Windows 加载器在游戏启动时自动加载 `ime_fix.dll`。类似忏悔+官中补丁的做法，一次性修改，自动备份原文件。内置官中补丁 config.ini 处理（check=-1，消除弹窗）。
+1. **ime_patcher.exe**：PE 导入表补丁工具。修改 `isaac-ng.exe` 的导入表，让 Windows 加载器在游戏启动时自动加载 `ime_loader.dll`。类似忏悔+官中补丁的做法，一次性修改，自动备份原文件。内置官中补丁 config.ini 处理（check=-1，消除弹窗）。
 
-2. **ime_fix.dll**：输入法管理器。启动后在工作线程轮询存档目录的 log.txt（记录基线，只扫描新增部分），分两阶段检测：
+2. **ime_loader.dll**：加载器/更新器（对标官中补丁的 bootstp.dll）。启动时把创意工坊 mod 目录的 `ime_fix.bin`（Steam 自动同步的新版本）与游戏目录的 `ime_fix.dll` 比较，若不同则覆盖之（此时 `ime_fix.dll` 尚未加载，覆盖安全），然后加载它。这样 Mod 更新时**无需重新打补丁**，而 loader 本身极少变动、无需自更新。
+
+3. **ime_fix.dll**：输入法管理器。启动后在工作线程轮询存档目录的 log.txt（记录基线，只扫描新增部分），分两阶段检测：
    - **阶段 1（启动窗口 ~12 秒）**：扫描是否出现 `Running Lua Script: .../ime-conflict-fix/main.lua`（游戏只在 mod 真正执行时写这行，`LOADED MOD` 枚举不可靠）→ 找到立即 `ImmDisableIME(-1)`（主菜单即生效）
    - **阶段 2（启动窗口后）**：若 mod 在游戏内才被启用（log 出现 `Menu Mods Init` 之后的 mod 标记）→ 等 `AnmCache: Clear`（mod 重载完成、回到主菜单）→ 禁用；或等开局信号 `[IME_RUN_STARTED]` → 开局禁用
    - mod 全程禁用/未执行 → 不做任何事
 
-3. **Lua Mod**（创意工坊）：极简——被游戏执行时留下 `main.lua` 执行日志（阶段 1 信号），并在开局时写 `[IME_RUN_STARTED]`（阶段 2 信号）。
+4. **Lua Mod**（创意工坊）：极简——被游戏执行时留下 `main.lua` 执行日志（阶段 1 信号），并在开局时写 `[IME_RUN_STARTED]`（阶段 2 信号）。
 
 为什么用 log.txt 信号而不是直接启动时禁用？因为 `ImmDisableIME(-1)` 是**不可逆**的，一旦调用就无法在进程内重新启用。必须确认 mod 已启用（= 用户需要禁用 IME）才调用。
 
