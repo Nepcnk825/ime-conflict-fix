@@ -17,10 +17,9 @@
 
 ### 方式一：Steam 创意工坊订阅（推荐）
 
-1. 在 Steam 创意工坊搜索 "IME Conflict Fix" 并订阅
-2. 启动游戏，在主菜单 **Mods** 菜单中找到 "IME Conflict Fix"（确认创意工坊已下载成功）
-3. 退出游戏，运行 `ime_patcher.exe` 打补丁（见下方"打补丁"）
-4. 重新启动游戏，在 Mods 菜单确认 "IME Conflict Fix" 已启用
+1. 在 Steam 创意工坊搜索 "IME Conflict Fix" 并订阅（等待 Steam 下载完成）
+2. 运行 `ime_patcher.exe` 打补丁（见下方"打补丁"）
+3. 启动游戏，在主菜单 **Mods** 菜单中启用 "IME Conflict Fix"
 
 > 方式一不需要额外下载工具——创意工坊订阅即完成 mod 本体的获取，只需构建/获取 `ime_patcher.exe` 和 `ime_fix.dll` 打补丁。
 
@@ -34,9 +33,8 @@
    ```
    构建产物放在同一目录
 3. 在游戏目录的 `mods/` 下**新建文件夹 `ime-conflict-fix`**，把 `main.lua` + `metadata.xml` 复制进去
-4. 启动游戏，在主菜单 Mods 菜单确认 "IME Conflict Fix" 出现并启用
-5. 退出游戏，运行 `ime_patcher.exe` 打补丁（见下方"打补丁"）
-6. 重新启动游戏，确认补丁生效
+4. 运行 `ime_patcher.exe` 打补丁（见下方"打补丁"）
+5. 启动游戏，在主菜单 Mods 菜单中启用 "IME Conflict Fix"
 
 ### 获取打补丁工具
 
