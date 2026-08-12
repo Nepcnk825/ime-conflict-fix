@@ -2,6 +2,7 @@
 <metadata>
     <name>IME Conflict Fix</name>
     <directory>ime-conflict-fix</directory>
-    <description>自动修复以撒的结合与中文输入法的键盘冲突问题</description>
+    <description>自动禁用以撒中开启的中文输入法，解决按键冲突问题。</description>
     <version>0.2</version>
+    <visibility>Public</visibility>
 </metadata>
