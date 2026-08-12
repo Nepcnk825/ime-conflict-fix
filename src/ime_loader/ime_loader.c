@@ -17,7 +17,8 @@
  * replaced at startup before being loaded. The loader itself rarely changes,
  * so it never needs self-updating.
  *
- * Windows API only - no CRT (static /MT link). Deps: kernel32 only.
+ * Windows API only - no CRT (static /MT link). Deps: user32 (wsprintfW lives
+ * in user32, NOT kernel32 - easy to get wrong), kernel32.
  */
 
 #include <windows.h>
