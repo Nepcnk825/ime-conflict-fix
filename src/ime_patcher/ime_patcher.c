@@ -13,7 +13,7 @@
 #pragma comment(lib, "advapi32.lib")
 
 #define SECTION_NAME ".imefix"
-#define DLL_NAME "ime_fix.dll"
+#define DLL_NAME "ime_loader.dll"   /* loader/updater - exe imports this */
 #define FUNC_NAME "IME_Init"
 #define ALIGN_UP(v, a) (((v) + (a) - 1) & ~((a) - 1))
 
@@ -105,15 +105,22 @@ static int do_restore(const char *path, int clean)
     }
     printf("RESTORED! %s restored from %s\n", path, bak);
 
-    /* Clean up: remove ime_fix.dll next to the exe (uninstall leaves nothing behind) */
-    char dll[MAX_PATH];
-    strncpy(dll, path, sizeof(dll) - 1);
-    dll[sizeof(dll) - 1] = 0;
-    char *slash = strrchr(dll, '\\');
-    if (slash) strcpy(slash + 1, "ime_fix.dll");
-    if (GetFileAttributesA(dll) != INVALID_FILE_ATTRIBUTES) {
-        if (DeleteFileA(dll))
-            printf("Removed %s\n", dll);
+    /* Clean up: remove ime_loader.dll + ime_fix.dll next to the exe */
+    {
+        char dll[MAX_PATH];
+        strncpy(dll, path, sizeof(dll) - 1);
+        dll[sizeof(dll) - 1] = 0;
+        char *slash = strrchr(dll, '\\');
+        if (slash) strcpy(slash + 1, "ime_loader.dll");
+        if (GetFileAttributesA(dll) != INVALID_FILE_ATTRIBUTES)
+            if (DeleteFileA(dll)) printf("Removed %s\n", dll);
+
+        strncpy(dll, path, sizeof(dll) - 1);
+        dll[sizeof(dll) - 1] = 0;
+        slash = strrchr(dll, '\\');
+        if (slash) strcpy(slash + 1, "ime_fix.dll");
+        if (GetFileAttributesA(dll) != INVALID_FILE_ATTRIBUTES)
+            if (DeleteFileA(dll)) printf("Removed %s\n", dll);
     }
     /* Restore the CN patch config.ini check value if we changed it */
     restore_cn_check(path);
@@ -257,7 +264,7 @@ static int do_patch(const char *path)
     return 0;
 }
 
-/* Copy ime_fix.dll from our own directory to the game exe's directory.
+/* Copy ime_loader.dll from our own directory to the game exe's directory.
    Returns 1 on success, 0 if the DLL is not next to us or copy failed. */
 static int copy_dll_next_to_game(const char *game_exe)
 {
@@ -266,14 +273,14 @@ static int copy_dll_next_to_game(const char *game_exe)
     char *slash = strrchr(exe_dir, '\\');
     if (slash) *slash = 0;
     char dll_src[MAX_PATH];
-    _snprintf(dll_src, sizeof(dll_src), "%s\\ime_fix.dll", exe_dir);
+    _snprintf(dll_src, sizeof(dll_src), "%s\\%s", exe_dir, DLL_NAME);
     if (GetFileAttributesA(dll_src) == INVALID_FILE_ATTRIBUTES)
         return 0;
     char dll_dst[MAX_PATH];
     strncpy(dll_dst, game_exe, sizeof(dll_dst) - 1);
     dll_dst[sizeof(dll_dst) - 1] = 0;
     char *f_slash = strrchr(dll_dst, '\\');
-    if (f_slash) strcpy(f_slash + 1, "ime_fix.dll");
+    if (f_slash) strcpy(f_slash + 1, DLL_NAME);
     return CopyFileA(dll_src, dll_dst, FALSE) ? 1 : 0;
 }
 
@@ -569,7 +576,7 @@ static int gui_mode(void)
         char msg[1024];
         _snprintf(msg, sizeof(msg),
             "已找到游戏：\n%s\n\n"
-            "点击\"是\"打补丁（添加 ime_fix.dll 加载）。\n"
+            "点击\"是\"打补丁（添加 ime_loader.dll 加载，自动更新输入法管理）。\n"
             "点击\"否\"手动选择其他文件。",
             file);
         int r = msg_box(msg, "已找到游戏 - IME 修复", MB_YESNOCANCEL | MB_ICONQUESTION);
@@ -602,7 +609,7 @@ static int gui_mode(void)
             return 0;
         int rc = do_restore(file, (r == IDNO) ? 1 : 0);
         if (rc == 0)
-            msg_box("还原成功。\n\nexe 已恢复到补丁前状态，\nime_fix.dll 已从游戏目录删除。\n\n"
+            msg_box("还原成功。\n\nexe 已恢复到补丁前状态，\nime_loader.dll 和 ime_fix.dll 已从游戏目录删除。\n\n"
                     "(若选择完全清理，备份文件也已删除)",
                     "还原成功", MB_OK | MB_ICONINFORMATION);
         else
@@ -617,13 +624,13 @@ static int gui_mode(void)
         if (copy_dll_next_to_game(file)) {
             _snprintf(msg, sizeof(msg),
                 "打补丁成功！\n\n"
-                "ime_fix.dll 已自动复制到游戏目录。\n"
-                "现在可以直接启动游戏了。");
+                "ime_loader.dll 已自动复制到游戏目录。\n"
+                "现在可以直接启动游戏了（输入法管理会随创意工坊自动更新）。");
         } else {
             _snprintf(msg, sizeof(msg),
                 "打补丁成功！\n\n"
-                "但未找到 ime_fix.dll（应与本程序在同一目录）。\n"
-                "请手动将 ime_fix.dll 复制到游戏目录后启动游戏。");
+                "但未找到 ime_loader.dll（应与本程序在同一目录）。\n"
+                "请手动将 ime_loader.dll 复制到游戏目录后启动游戏。");
         }
         msg_box(msg, "打补丁成功", MB_OK | MB_ICONINFORMATION);
     } else
@@ -672,5 +679,14 @@ int main(int argc, char **argv)
     if (restore)
         return do_restore(path, clean);
 
-    return do_patch(path);
+    int rc = do_patch(path);
+    if (rc == 0) {
+        /* The exe now imports ime_loader.dll - it MUST be in the game dir or
+           Windows will fail to start the game. Copy it (if available). */
+        if (copy_dll_next_to_game(path))
+            printf("%s copied next to the game.\n", DLL_NAME);
+        else
+            printf("WARNING: %s not found next to ime_patcher.exe - copy it to the game directory manually!\n", DLL_NAME);
+    }
+    return rc;
 }
