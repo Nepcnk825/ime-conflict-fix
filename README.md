@@ -101,13 +101,13 @@
 ### Q: 会影响其他游戏或应用吗？
 A: 不会。本 Mod 只管理以撒这一个进程的输入法，退出游戏后不留下任何状态。
 
-### Q: 可以和忏悔（REPENTOGON）/ 忏悔+官中补丁一起用吗？
-A: 可以，三者互不冲突。
+### Q: 可以和 REPENTOGON / 忏悔+官中补丁一起用吗？
+A: **理论上兼容，但未联合实测**，请自行验证。
 
-- **忏悔（REPENTOGON）**：官方 DLC（Repentance+ 的官方内容，非第三方 mod），无需额外安装
-- **忏悔+官中补丁**：Steam 创意工坊 mod。因为忏悔+ DLC 会导致官方中文失效，所以社区制作了这个创意工坊 mod 来恢复中文
+- **REPENTOGON**：通过把 `dsound.dll` 等文件放入游戏目录来加载（DLL 代理方式），**不修改 `isaac-ng.exe`**。本 Mod 通过**修改 exe 导入表**加载 `ime_fix.dll`，两者机制独立，互不冲突。
+- **忏悔+官中补丁**：同样通过修改 `isaac-ng.exe` 导入表加载 DLL。多个补丁工具在**同一个 exe 文件上逐个追加条目**，同时使用时**按安装顺序逐个运行各补丁工具**即可，全部打完后启动游戏。
 
-三者都通过往 `isaac-ng.exe` 的导入表加条目加载自己的 DLL。由于打补丁是**在同一个 exe 文件上追加条目**，如果同时使用多个，需要**先运行一个的补丁工具、再运行另一个的补丁工具**（顺序无关，按你安装它们的顺序逐个打补丁即可），全部打完后启动游戏即可。
+> 由于 REPENTOGON 与本 Mod 从未联合测试过，如果遇到问题，请尝试先单独运行各补丁工具，确认各自单独可用后再组合。
 
 ### Q: 游戏更新后需要重新打补丁吗？
 A: **需要**。Steam 更新游戏时会用新的 exe 覆盖旧的，之前的补丁就没了。更新后重新运行一次 `ime_patcher.exe` 即可（一分钟搞定）。
@@ -137,7 +137,7 @@ A: 本项目**未做过 VirusTotal 等第三方扫描认证**。二进制文件�
 
 ## 技术原理（给想了解的人）
 
-> 以下为简略描述，供快速了解大致思路。想要深入了解实现细节，请直接阅读 [源代码](https://github.com/Nepcnk825/ime-conflict-fix)。
+> 以下为简略描述，供快速了解大致思路。想要深入了解实现细节，请直接阅读源码：[src/ime_fix](https://github.com/Nepcnk825/ime-conflict-fix/tree/main/src/ime_fix)（输入法管理 DLL）与 [src/ime_patcher](https://github.com/Nepcnk825/ime-conflict-fix/tree/main/src/ime_patcher)（补丁工具）。
 
 整个方案由三个部分组成：
 
@@ -155,7 +155,6 @@ A: 本项目**未做过 VirusTotal 等第三方扫描认证**。二进制文件�
 ## 参考与致谢
 
 - **忏悔+官中补丁**（[Steam 创意工坊](https://steamcommunity.com/sharedfiles/filedetails/?id=3568677664)）：本项目参考了其 PE 导入表补丁的实现方式（patcher 修改 `isaac-ng.exe` 导入表加载 DLL），并兼容处理其 config.ini 校验（自动设置 `check=-1` 消除弹窗）。若未安装忏悔+官中补丁，本 Mod 的这部分兼容逻辑自动跳过，不影响使用。
-- **忏悔（REPENTOGON）**：兼容，按顺序依次打补丁即可。
 - **IMBlocker**（Minecraft 输入法修复项目）：启发自其输入法处理思路（本项目改用 Windows 原生 API 实现）。
 
 > 本项目开发过程中使用了 AI 辅助工具（代码生成、审查与文档撰写），所有代码均经过人工审查与实测验证。
