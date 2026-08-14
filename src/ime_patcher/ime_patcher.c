@@ -73,6 +73,14 @@ static int is_patched(const char *path)
    successful restore, leaving NO trace of this mod in the game dir. */
 static int do_restore(const char *path, int clean)
 {
+    /* Normalize to a FULL path first: with a bare relative name (CLI mode)
+       the sibling-file logic below (backup name, DLL deletion) would derive
+       the exe path itself and DeleteFileA would delete the exe. */
+    char full[MAX_PATH];
+    if (GetFullPathNameA(path, sizeof(full), full, NULL) == 0 || !full[0])
+        return 1;
+    path = full;
+
     HANDLE h = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
     if (h == INVALID_HANDLE_VALUE) { printf("ERROR: cannot open %s\n", path); return 1; }
     DWORD sz = GetFileSize(h, NULL);
@@ -137,7 +145,14 @@ static int do_restore(const char *path, int clean)
 
 static int do_patch(const char *path)
 {
-    printf("IME Patcher v1.3\nTarget: %s\n", path);
+    printf("IME Patcher v1.4\nTarget: %s\n", path);
+
+    /* Normalize to a FULL path first - sibling paths (backup, DLL copy)
+       are derived from it and a bare relative name would corrupt them. */
+    char full[MAX_PATH];
+    if (GetFullPathNameA(path, sizeof(full), full, NULL) == 0 || !full[0])
+        return 1;
+    path = full;
 
     HANDLE h = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
     if (h == INVALID_HANDLE_VALUE) { printf("ERROR: cannot open %s\n", path); return 1; }
@@ -150,6 +165,14 @@ static int do_patch(const char *path)
     if (dos->e_magic != IMAGE_DOS_SIGNATURE) { printf("ERROR: not MZ\n"); free(buf); return 1; }
     PIMAGE_NT_HEADERS32 nt = (PIMAGE_NT_HEADERS32)(buf + dos->e_lfanew);
     if (nt->Signature != IMAGE_NT_SIGNATURE) { printf("ERROR: not PE\n"); free(buf); return 1; }
+
+    /* Refuse 64-bit PEs - Isaac Repentance+ is PE32 (x86). Patching a PE32+
+       file with 32-bit import descriptors would corrupt it. */
+    if (nt->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR32_MAGIC) {
+        printf("ERROR: not a 32-bit PE (PE32+, machine 0x%X) - Isaac Repentance+ is 32-bit.\n", nt->FileHeader.Machine);
+        free(buf);
+        return 1;
+    }
 
     /* Already patched? Bail out instead of double-patching. */
     if (find_imefix_section(nt) >= 0) {
@@ -177,12 +200,18 @@ static int do_patch(const char *path)
     while (imps[count].Name || imps[count].FirstThunk) count++;
     printf("Existing imports: %d\n", count);
 
-    /* Backup (dedicated name - never clobbers an existing .bak from the CN patch) */
+    /* Backup (dedicated name - never clobbers an existing .bak from the CN patch).
+       A STALE backup (game updated on Steam since the last patch, then re-patched)
+       is refreshed so a later restore rolls back to the CURRENT pre-patch exe
+       instead of an ancient game version. */
     char bak[MAX_PATH];
     sprintf(bak, "%s.imefix.bak", path);
     if (GetFileAttributesA(bak) == INVALID_FILE_ATTRIBUTES) {
         CopyFileA(path, bak, TRUE);
         printf("Backup: %s\n", bak);
+    } else if (file_differs_from_buf(bak, buf, sz)) {
+        CopyFileA(path, bak, FALSE);
+        printf("Backup was stale (game updated?) - refreshed: %s\n", bak);
     } else {
         printf("Backup already exists, keeping it: %s\n", bak);
     }
@@ -264,23 +293,68 @@ static int do_patch(const char *path)
     return 0;
 }
 
+/* Compare a file's content with a memory buffer. Returns 1 when the file
+   is missing, unreadable, or differs in any byte - i.e. a backup file that
+   does not match the current exe is STALE (typically after a Steam update
+   replaced the exe and the user re-patched). */
+static int file_differs_from_buf(const char *path, const BYTE *buf, DWORD sz)
+{
+    HANDLE h = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+    DWORD fsz, rd = 0;
+    BYTE *fb;
+    int diff;
+
+    if (h == INVALID_HANDLE_VALUE)
+        return 1;
+    fsz = GetFileSize(h, NULL);
+    if (fsz == INVALID_FILE_SIZE || fsz != sz) {
+        CloseHandle(h);
+        return 1;
+    }
+    fb = (BYTE*)malloc(sz);
+    if (!fb) { CloseHandle(h); return 1; }
+    if (!ReadFile(h, fb, sz, &rd, NULL) || rd != sz) {
+        free(fb);
+        CloseHandle(h);
+        return 1;
+    }
+    CloseHandle(h);
+    diff = (memcmp(buf, fb, sz) != 0);
+    free(fb);
+    return diff;
+}
+
 /* Copy ime_loader.dll from our own directory to the game exe's directory.
-   Returns 1 on success, 0 if the DLL is not next to us or copy failed. */
+   Returns 1 on success, 0 if the DLL is not next to us or copy failed.
+   The exe path is resolved to a FULL path first: with a bare relative name
+   (e.g. CLI mode: ime_patcher.exe isaac-ng.exe) the "game directory" is the
+   CWD, and deriving the destination from the raw argument would yield
+   "isaac-ng.exe" itself - CopyFileA would then overwrite the freshly
+   patched exe with ime_loader.dll. */
 static int copy_dll_next_to_game(const char *game_exe)
 {
-    char exe_dir[MAX_PATH] = {0};
-    GetModuleFileNameA(NULL, exe_dir, MAX_PATH);
-    char *slash = strrchr(exe_dir, '\\');
-    if (slash) *slash = 0;
+    char exe_full[MAX_PATH] = {0};
+    char self_dir[MAX_PATH] = {0};
     char dll_src[MAX_PATH];
-    _snprintf(dll_src, sizeof(dll_src), "%s\\%s", exe_dir, DLL_NAME);
+    char dll_dst[MAX_PATH];
+    char *slash;
+
+    if (GetFullPathNameA(game_exe, sizeof(exe_full), exe_full, NULL) == 0)
+        return 0;
+    slash = strrchr(exe_full, '\\');
+    if (!slash)
+        return 0;
+    *slash = 0; /* exe_full = full game directory */
+
+    GetModuleFileNameA(NULL, self_dir, MAX_PATH);
+    slash = strrchr(self_dir, '\\');
+    if (slash)
+        *slash = 0;
+
+    _snprintf(dll_src, sizeof(dll_src), "%s\\%s", self_dir, DLL_NAME);
     if (GetFileAttributesA(dll_src) == INVALID_FILE_ATTRIBUTES)
         return 0;
-    char dll_dst[MAX_PATH];
-    strncpy(dll_dst, game_exe, sizeof(dll_dst) - 1);
-    dll_dst[sizeof(dll_dst) - 1] = 0;
-    char *f_slash = strrchr(dll_dst, '\\');
-    if (f_slash) strcpy(f_slash + 1, DLL_NAME);
+    _snprintf(dll_dst, sizeof(dll_dst), "%s\\%s", exe_full, DLL_NAME);
     return CopyFileA(dll_src, dll_dst, FALSE) ? 1 : 0;
 }
 

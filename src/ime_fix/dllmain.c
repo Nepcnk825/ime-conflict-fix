@@ -1,4 +1,4 @@
-﻿/*
+/*
  * ime_fix.dll - IME management for The Binding of Isaac: Repentance+
  *
  * Startup-time IME disabling based on whether the companion Lua mod is
@@ -46,6 +46,12 @@
 #define POLL_WINDOW_S 12           /* only poll during the game's mod-load window */
 #define POLL_INTERVAL_MS 2000      /* startup-window poll interval */
 #define RUN_POLL_MS 3000           /* per-run marker poll interval (after window) */
+
+/* Our own module handle (set in DllMain). Used to resolve our own directory:
+   GetModuleFileNameA(g_hself) returns ime_fix.dll's own path - with NULL it
+   would return the HOST exe's path, which is only correct by luck when the
+   host sits in the same directory (see savedatapath.txt resolution below). */
+static HMODULE g_hself = NULL;
 
 /* ====================================================================
  * Minimal string helpers (no CRT: no strlen/strcmp/strstr/strcat)
@@ -171,7 +177,7 @@ static void resolve_save_path(char *out, DWORD outSize)
     char dllPath[MAX_PATH];
     char cfgPath[MAX_PATH];
     char cfg[MAX_PATH * 2];
-    DWORD n = GetModuleFileNameA(NULL, dllPath, MAX_PATH);
+    DWORD n = GetModuleFileNameA(g_hself, dllPath, MAX_PATH);
     int last = -1, i;
 
     if (n == 0 || n >= MAX_PATH)
@@ -412,6 +418,7 @@ BOOL WINAPI DllMain(HINSTANCE h, DWORD r, LPVOID x)
     (void)x;
     if (r == DLL_PROCESS_ATTACH) {
         DisableThreadLibraryCalls(h);
+        g_hself = h;
         ime_log("main", "ime_fix.dll v" IME_FIX_STRING " loaded (startup-disable mode)");
         CloseHandle(CreateThread(NULL, 0, worker, NULL, 0, NULL));
     }

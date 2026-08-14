@@ -104,7 +104,10 @@ static void loader_run(void)
     }
 
     /* Load the (possibly updated) functional DLL */
-    LoadLibraryW(dll);
+    if (LoadLibraryW(dll))
+        loader_log("main", "ime_fix.dll loaded");
+    else
+        loader_log("main", "LoadLibraryW(ime_fix.dll) FAILED");
 }
 
 BOOL WINAPI DllMain(HINSTANCE h, DWORD reason, LPVOID reserved)
