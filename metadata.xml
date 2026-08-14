@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <metadata>
-    <name>IME Conflict Fix</name>
+    <name>以撒输入法冲突修复（IME Conflict Fix）</name>
     <directory>ime-conflict-fix</directory>
-    <id></id>
+    <id>3783304248</id>
     <description>自动禁用以撒中开启的中文输入法，解决按键冲突问题。</description>
-    <version>0.2</version>
+    <version>0.4</version>
     <visibility>Public</visibility>
 </metadata>
