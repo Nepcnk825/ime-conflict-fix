@@ -253,30 +253,6 @@ static BOOL get_log_size(const char *savePath, DWORD *outSize)
     return TRUE;
 }
 
-/* TRUE if log.txt size stays unchanged for wait_ms (checked every 500ms).
-   Used as a proxy for "mod reload finished": the game logs nothing while
-   sitting idle at the main menu after a reload, whereas mid-reload it is
-   still writing. */
-static BOOL log_stable_for(const char *savePath, DWORD wait_ms)
-{
-    DWORD prev = 0;
-    DWORD waited = 0;
-    DWORD now;
-
-    if (!get_log_size(savePath, &prev))
-        return FALSE;
-    while (waited < wait_ms) {
-        Sleep(500);
-        waited += 500;
-        if (!get_log_size(savePath, &now))
-            return FALSE;
-        if (now != prev)
-            return FALSE; /* log grew - reload (or something) still active */
-        prev = now;
-    }
-    return TRUE;
-}
-
 /* Read the log.txt range [from_offset, end) into a NUL-terminated buffer.
    Returns malloc'd buffer (caller frees) or NULL on any failure.
    The game appends to log.txt while we read, so use FILE_SHARE_WRITE. */
@@ -423,14 +399,33 @@ static DWORD WINAPI worker(LPVOID param)
            real game log, hence the stability proxy. If a run starts during
            the wait, trigger a) fires instead (equally safe). */
         if (!waiting_reload && mod_loaded_since(savePath, baseline)) {
-            ime_log("main", "mod toggled in-game - waiting for reload to finish (log idle)");
+            ime_log("main", "mod toggled in-game - waiting for reload to finish");
             waiting_reload = TRUE;
         }
         if (waiting_reload) {
-            if (log_stable_for(savePath, 3000)) {
-                ImmDisableIME(-1);
-                ime_log("main", "mod toggled in-game - IME disabled after reload finished");
-                return 0;
+            /* Fast reload-complete detection: check every 500ms, disable as
+               soon as the log stops growing (reload done, game idle at the
+               main menu). A run starting during the wait fires trigger a)
+               instead. If the log keeps growing for 15s (game busy), give up
+               this attempt and keep monitoring - run-start still works. */
+            DWORD t0 = GetTickCount();
+            while (GetTickCount() - t0 < 15000) {
+                DWORD s1 = 0, s2 = 0;
+                if (!get_log_size(savePath, &s1))
+                    break;
+                Sleep(500);
+                if (run_started_since(savePath, baseline)) {
+                    ImmDisableIME(-1);
+                    ime_log("main", "per-run marker - IME disabled at run start");
+                    return 0;
+                }
+                if (!get_log_size(savePath, &s2))
+                    break;
+                if (s2 == s1) {
+                    ImmDisableIME(-1);
+                    ime_log("main", "mod toggled in-game - IME disabled after reload finished");
+                    return 0;
+                }
             }
         }
         Sleep(RUN_POLL_MS);
