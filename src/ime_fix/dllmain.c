@@ -416,14 +416,28 @@ static DWORD WINAPI worker(LPVOID param)
             reload_t0 = GetTickCount();
         }
         if (waiting_reload) {
-            /* Wait for the reload-complete signal "AnmCache: Clear" (the
-               fast, user-verified path from earlier builds). Run-start
-               fires earlier when a run begins. If the signal never appears
-               within 30s (game version does not print it), give up this
-               attempt and keep monitoring trigger a). */
+            /* Reload-done anchor: "AnmCache: Clear" (verified present in the
+               real game log right after the mods finish re-executing).
+               IMPORTANT: Clear only marks the mod-reload stage - the game
+               then initializes the main menu (Loading GameState etc.), and
+               ImmDisableIME during that window still freezes the UI (real
+               freeze observed with the immediate-disable version). So after
+               Clear appears we wait a fixed 2s grace (menu init window)
+               before disabling. Run-start fires earlier when a run begins.
+               30s cap on the whole attempt. */
             if (marker_since(savePath, baseline, RELOAD_DONE_TAG)) {
+                DWORD grace_t0 = GetTickCount();
+                ime_log("main", "mod toggled in-game - reload done, waiting 2s for menu init");
+                while (GetTickCount() - grace_t0 < 2000) {
+                    Sleep(500);
+                    if (run_started_since(savePath, baseline)) {
+                        ImmDisableIME(-1);
+                        ime_log("main", "per-run marker - IME disabled at run start");
+                        return 0;
+                    }
+                }
                 ImmDisableIME(-1);
-                ime_log("main", "mod toggled in-game - IME disabled after reload finished (AnmCache: Clear)");
+                ime_log("main", "mod toggled in-game - IME disabled after reload finished");
                 return 0;
             }
             if (GetTickCount() - reload_t0 > 30000) {

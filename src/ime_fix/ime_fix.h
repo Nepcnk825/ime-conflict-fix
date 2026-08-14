@@ -10,9 +10,9 @@
 
 /* Version */
 #define IME_FIX_MAJOR 0
-#define IME_FIX_MINOR 2
-#define IME_FIX_PATCH 9
-#define IME_FIX_STRING "0.2.9"
+#define IME_FIX_MINOR 3
+#define IME_FIX_PATCH 0
+#define IME_FIX_STRING "0.3.0"
 
 /*
  * Shared debug logging — writes to %APPDATA%\ime-conflict-fix\debug.log
