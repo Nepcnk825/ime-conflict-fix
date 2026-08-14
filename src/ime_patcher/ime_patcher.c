@@ -45,23 +45,30 @@ static int find_imefix_section(PIMAGE_NT_HEADERS32 nt)
 }
 
 /* Check whether a file is a patched PE carrying our .imefix section.
-   Returns 1 = patched, 0 = not patched, -1 = not a valid PE file. */
+   Returns 1 = patched, 0 = not patched, -1 = not a valid/unreadable PE file.
+   (A locked file - e.g. the game is running - also yields -1; the caller's
+   message should not claim "not a PE" for that case.) */
 static int is_patched(const char *path)
 {
     HANDLE h = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
-    if (h == INVALID_HANDLE_VALUE) return -1;
-    DWORD sz = GetFileSize(h, NULL);
-    BYTE *buf = malloc(sz);
-    DWORD rd; ReadFile(h, buf, sz, &rd, NULL); CloseHandle(h);
+    DWORD sz, rd = 0;
+    BYTE *buf;
+    int r = -1;
 
-    PIMAGE_DOS_HEADER dos = (PIMAGE_DOS_HEADER)buf;
-    PIMAGE_NT_HEADERS32 nt = (PIMAGE_NT_HEADERS32)(buf + dos->e_lfanew);
-    int r = 0;
-    if (dos->e_magic == IMAGE_DOS_SIGNATURE && nt->Signature == IMAGE_NT_SIGNATURE)
-        r = (find_imefix_section(nt) >= 0) ? 1 : 0;
-    else
-        r = -1;
+    if (h == INVALID_HANDLE_VALUE)
+        return -1;
+    sz = GetFileSize(h, NULL);
+    if (sz == INVALID_FILE_SIZE || sz == 0) { CloseHandle(h); return -1; }
+    buf = malloc(sz);
+    if (!buf) { CloseHandle(h); return -1; }
+    if (ReadFile(h, buf, sz, &rd, NULL) && rd == sz) {
+        PIMAGE_DOS_HEADER dos = (PIMAGE_DOS_HEADER)buf;
+        PIMAGE_NT_HEADERS32 nt = (PIMAGE_NT_HEADERS32)(buf + dos->e_lfanew);
+        if (dos->e_magic == IMAGE_DOS_SIGNATURE && nt->Signature == IMAGE_NT_SIGNATURE)
+            r = (find_imefix_section(nt) >= 0) ? 1 : 0;
+    }
     free(buf);
+    CloseHandle(h);
     return r;
 }
 
@@ -84,8 +91,16 @@ static int do_restore(const char *path, int clean)
     HANDLE h = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
     if (h == INVALID_HANDLE_VALUE) { printf("ERROR: cannot open %s\n", path); return 1; }
     DWORD sz = GetFileSize(h, NULL);
+    if (sz == INVALID_FILE_SIZE || sz == 0) { CloseHandle(h); printf("ERROR: bad file size\n"); return 1; }
     BYTE *buf = malloc(sz);
-    DWORD rd; ReadFile(h, buf, sz, &rd, NULL); CloseHandle(h);
+    DWORD rd = 0;
+    if (!buf || !ReadFile(h, buf, sz, &rd, NULL) || rd != sz) {
+        CloseHandle(h);
+        printf("ERROR: cannot read %s\n", path);
+        if (buf) free(buf);
+        return 1;
+    }
+    CloseHandle(h);
 
     PIMAGE_DOS_HEADER dos = (PIMAGE_DOS_HEADER)buf;
     if (dos->e_magic != IMAGE_DOS_SIGNATURE) { printf("ERROR: not MZ\n"); free(buf); return 1; }
@@ -157,8 +172,16 @@ static int do_patch(const char *path)
     HANDLE h = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
     if (h == INVALID_HANDLE_VALUE) { printf("ERROR: cannot open %s\n", path); return 1; }
     DWORD sz = GetFileSize(h, NULL);
+    if (sz == INVALID_FILE_SIZE || sz == 0) { CloseHandle(h); printf("ERROR: bad file size\n"); return 1; }
     BYTE *buf = malloc(sz);
-    DWORD rd; ReadFile(h, buf, sz, &rd, NULL); CloseHandle(h);
+    DWORD rd = 0;
+    if (!buf || !ReadFile(h, buf, sz, &rd, NULL) || rd != sz) {
+        CloseHandle(h);
+        printf("ERROR: cannot read %s\n", path);
+        if (buf) free(buf);
+        return 1;
+    }
+    CloseHandle(h);
     printf("Read %u bytes\n", sz);
 
     PIMAGE_DOS_HEADER dos = (PIMAGE_DOS_HEADER)buf;
@@ -224,6 +247,18 @@ static int do_patch(const char *path)
     BYTE sdata[1024] = {0};
     DWORD off = 0;
 
+    /* The new section data is laid out in the fixed 1KB buffer:
+       descriptors + ILT + hint/name + DLL name must fit. */
+    {
+        DWORD need = (DWORD)(count + 2) * sizeof(IMAGE_IMPORT_DESCRIPTOR)
+                   + 8 + sizeof(IMAGE_IMPORT_BY_NAME) + sizeof(FUNC_NAME) - 1 + sizeof(DLL_NAME);
+        if (need > sizeof(sdata)) {
+            printf("ERROR: too many imports (%d) for the patch buffer - not patching.\n", count);
+            free(buf);
+            return 1;
+        }
+    }
+
     /* Combined import descriptors (old + new + null) */
     DWORD desc_n = count + 2;
     memcpy(sdata, imps, count * sizeof(IMAGE_IMPORT_DESCRIPTOR));
@@ -272,19 +307,36 @@ static int do_patch(const char *path)
 
     printf("Section: raw_sz=0x%X virt_sz=0x%X off=%d\n", ns->SizeOfRawData, ns->Misc.VirtualSize, off);
 
-    /* Write: seek to new_raw before writing section data */
+    /* Write: seek to new_raw before writing section data.
+       NOTE: CREATE_ALWAYS truncates first - if any write below fails the
+       exe is damaged, but the backup (.imefix.bak) was already created
+       above, so recovery is one restore away. */
     HANDLE out = CreateFileA(path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, NULL);
     if (out == INVALID_HANDLE_VALUE) { printf("ERROR: write\n"); free(buf); return 1; }
-    DWORD wr;
-    WriteFile(out, buf, sz, &wr, NULL);
-    SetFilePointer(out, new_raw, NULL, FILE_BEGIN);
-    BYTE *pad = calloc(1, ns->SizeOfRawData);
-    memcpy(pad, sdata, off);
-    WriteFile(out, pad, ns->SizeOfRawData, &wr, NULL);
-    free(pad);
-    SetFilePointer(out, 0, NULL, FILE_END);
-    SetEndOfFile(out);
+    DWORD wr = 0;
+    BOOL ok = WriteFile(out, buf, sz, &wr, NULL) && wr == sz;
+    if (ok) {
+        ok = SetFilePointer(out, new_raw, NULL, FILE_BEGIN) != INVALID_SET_FILE_POINTER;
+        BYTE *pad = calloc(1, ns->SizeOfRawData);
+        if (pad) {
+            memcpy(pad, sdata, off);
+            wr = 0;
+            ok = ok && WriteFile(out, pad, ns->SizeOfRawData, &wr, NULL) && wr == ns->SizeOfRawData;
+            free(pad);
+        } else {
+            ok = FALSE;
+        }
+    }
+    if (ok) {
+        ok = SetFilePointer(out, 0, NULL, FILE_END) != INVALID_SET_FILE_POINTER && SetEndOfFile(out);
+    }
     CloseHandle(out);
+    if (!ok) {
+        printf("ERROR: write to %s failed - the file may be damaged.\n", path);
+        printf("       Restore it with: ime_patcher.exe --restore %s\n", path);
+        free(buf);
+        return 1;
+    }
     free(buf);
 
     printf("PATCHED! %s!%s added.\n", DLL_NAME, FUNC_NAME);
@@ -668,7 +720,8 @@ static int gui_mode(void)
 
     int st = is_patched(file);
     if (st < 0) {
-        msg_box("所选文件不是有效的 Windows 可执行文件（PE）。",
+        msg_box("无法读取所选文件，或它不是有效的 Windows 可执行文件（PE）。\n\n"
+                "常见原因：游戏正在运行（请先退出游戏），或选择的不是 isaac-ng.exe。",
                 "请选择正确的文件", MB_OK | MB_ICONERROR);
         return 1;
     }

@@ -373,6 +373,7 @@ static DWORD WINAPI worker(LPVOID param)
             wait for "AnmCache: Clear" (reload done) plus the log to stop
             growing for ~3s (game back at main menu, input idle) -> safe. */
     ime_log("main", "mod not enabled at launch - monitoring for safe disable trigger");
+    BOOL toggle_failed = FALSE; /* trigger b gave up once - do not retry forever */
     for (;;) {
         /* Trigger a): a single-player run started. */
         if (run_started_since(savePath, baseline)) {
@@ -387,24 +388,35 @@ static DWORD WINAPI worker(LPVOID param)
            game logs right after all mods finish loading (before any user
            action like starting a run). At that point the game is back at the
            main menu with the input system idle - safe to disable, and fast
-           enough that starting a run right away still gets IME off first. */
-        DWORD menu_pos = 0;
-        BOOL in_menu = find_marker_pos(savePath, baseline, MODS_MENU_TAG, &menu_pos);
-        if (in_menu) {
-            DWORD mod_pos = 0;
-            if (find_marker_pos(savePath, menu_pos, MOD_TAG, &mod_pos)) {
-                ime_log("main", "mod toggled in-game - waiting for reload to finish");
-                for (;;) {
-                    Sleep(500);
-                    if (run_started_since(savePath, baseline)) {
-                        ImmDisableIME(-1);
-                        ime_log("main", "per-run marker - IME disabled at run start");
-                        return 0;
-                    }
-                    if (marker_since(savePath, mod_pos, RELOAD_DONE_TAG)) {
-                        ImmDisableIME(-1);
-                        ime_log("main", "mod toggled in-game - IME disabled after reload finished");
-                        return 0;
+           enough that starting a run right away still gets IME off first.
+           If the reload-complete signal never appears (game log format
+           changed?), give up after 60s: keep monitoring trigger a) instead
+           of spinning inside this branch forever. */
+        if (!toggle_failed) {
+            DWORD menu_pos = 0;
+            BOOL in_menu = find_marker_pos(savePath, baseline, MODS_MENU_TAG, &menu_pos);
+            if (in_menu) {
+                DWORD mod_pos = 0;
+                if (find_marker_pos(savePath, menu_pos, MOD_TAG, &mod_pos)) {
+                    DWORD t0 = GetTickCount();
+                    ime_log("main", "mod toggled in-game - waiting for reload to finish");
+                    for (;;) {
+                        Sleep(500);
+                        if (run_started_since(savePath, baseline)) {
+                            ImmDisableIME(-1);
+                            ime_log("main", "per-run marker - IME disabled at run start");
+                            return 0;
+                        }
+                        if (marker_since(savePath, mod_pos, RELOAD_DONE_TAG)) {
+                            ImmDisableIME(-1);
+                            ime_log("main", "mod toggled in-game - IME disabled after reload finished");
+                            return 0;
+                        }
+                        if (GetTickCount() - t0 > 60000) {
+                            ime_log("main", "reload-complete signal not seen in 60s - IME stays enabled");
+                            toggle_failed = TRUE;
+                            break;
+                        }
                     }
                 }
             }
