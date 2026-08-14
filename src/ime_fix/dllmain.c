@@ -38,7 +38,16 @@
 #pragma comment(lib, "imm32.lib")
 #pragma comment(lib, "user32.lib")
 
-#define MOD_TAG "ime-conflict-fix/main.lua" /* Lua mod entry; logged only when the mod EXECUTES */
+/* Lua mod execution signal. The game logs
+   "Running Lua Script: .../mods/<folder>/main.lua" ONLY when the mod actually
+   executes. The folder may be the manual name "ime-conflict-fix" or the
+   Steam Workshop name "ime-conflict-fix_<workshop id>", so we match the
+   folder prefix ("ime-conflict-fix") FOLLOWED (within a small window) by
+   "/main.lua". A plain prefix match would false-positive on the "LOADED MOD"
+   enumeration line (printed even when the mod is disabled). */
+#define MOD_DIR_TAG "ime-conflict-fix"  /* folder prefix, both namings */
+#define MOD_FILE_TAG "/main.lua"        /* proves execution (not just enumeration) */
+#define MOD_GAP_MAX 64                  /* max chars between the two tags */
 #define RUN_TAG "[IME_RUN_STARTED]"         /* Lua mod per-run marker (MC_POST_GAME_STARTED) */
 #define MODS_MENU_TAG "Menu Mods Init"      /* logged when user enters the Mods menu */
 #define RELOAD_DONE_TAG "AnmCache: Clear"   /* logged when a mod reload finishes */
@@ -107,6 +116,38 @@ static BOOL contains(const char *haystack, const char *needle)
         for (j = 0; j < nl; j++)
             if (haystack[i + j] != needle[j]) break;
         if (j == nl) return TRUE;
+    }
+    return FALSE;
+}
+
+/* Paired substring search: TRUE if needle1 occurs AND needle2 occurs within
+   max_gap characters AFTER that occurrence. Used for the mod-execution
+   signal (folder prefix + "/main.lua") to avoid false positives on the
+   "LOADED MOD" enumeration line which contains the folder name but not
+   "/main.lua". */
+static BOOL contains_pair(const char *haystack, const char *needle1,
+                          const char *needle2, int max_gap)
+{
+    int hl = my_strlen(haystack);
+    int l1 = my_strlen(needle1);
+    int l2 = my_strlen(needle2);
+    int i, j;
+    for (i = 0; i + l1 <= hl; i++) {
+        for (j = 0; j < l1; j++)
+            if (haystack[i + j] != needle1[j]) break;
+        if (j == l1) {
+            /* found needle1: look for needle2 in the next max_gap chars */
+            int end = i + l1 + max_gap;
+            int k;
+            if (end > hl) end = hl;
+            for (k = i + l1; k + l2 <= end; k++) {
+                for (j = 0; j < l2; j++)
+                    if (haystack[k + j] != needle2[j]) break;
+                if (j == l2)
+                    return TRUE;
+            }
+            return FALSE; /* first needle1 occurrence without needle2: no match */
+        }
     }
     return FALSE;
 }
@@ -299,7 +340,53 @@ static BOOL find_marker_pos(const char *savePath, DWORD from_offset,
 
 static BOOL mod_loaded_since(const char *savePath, DWORD from_offset)
 {
-    return marker_since(savePath, from_offset, MOD_TAG);
+    DWORD rd = 0;
+    char *buf = read_log_range(savePath, from_offset, &rd);
+    BOOL found;
+    if (!buf)
+        return FALSE;
+    found = contains_pair(buf, MOD_DIR_TAG, MOD_FILE_TAG, MOD_GAP_MAX);
+    free(buf);
+    return found;
+}
+
+/* Like mod_loaded_since but fills *out_pos with the byte offset of the
+   "/main.lua" occurrence (used to scope the reload-done wait). */
+static BOOL mod_loaded_pos_since(const char *savePath, DWORD from_offset,
+                                 DWORD *out_pos)
+{
+    DWORD rd = 0;
+    char *buf = read_log_range(savePath, from_offset, &rd);
+    BOOL found = FALSE;
+    int i, j;
+
+    if (!buf)
+        return FALSE;
+    for (i = 0; i + (int)my_strlen(MOD_DIR_TAG) <= (int)rd; i++) {
+        const char *n1 = MOD_DIR_TAG;
+        int l1 = my_strlen(n1);
+        for (j = 0; j < l1; j++)
+            if (buf[i + j] != n1[j]) break;
+        if (j == l1) {
+            int gap_end = i + l1 + MOD_GAP_MAX;
+            int k;
+            const char *n2 = MOD_FILE_TAG;
+            int l2 = my_strlen(n2);
+            if (gap_end > (int)rd) gap_end = (int)rd;
+            for (k = i + l1; k + l2 <= gap_end; k++) {
+                for (j = 0; j < l2; j++)
+                    if (buf[k + j] != n2[j]) break;
+                if (j == l2) {
+                    *out_pos = from_offset + (DWORD)k;
+                    found = TRUE;
+                    break;
+                }
+            }
+            if (found) break;
+        }
+    }
+    free(buf);
+    return found;
 }
 
 static BOOL run_started_since(const char *savePath, DWORD from_offset)
@@ -387,7 +474,7 @@ static DWORD WINAPI worker(LPVOID param)
             BOOL in_menu = find_marker_pos(savePath, baseline, MODS_MENU_TAG, &menu_pos);
             if (in_menu) {
                 DWORD mod_pos = 0;
-                if (find_marker_pos(savePath, menu_pos, MOD_TAG, &mod_pos)) {
+                if (mod_loaded_pos_since(savePath, menu_pos, &mod_pos)) {
                     DWORD t0 = GetTickCount();
                     ime_log("main", "mod toggled in-game - waiting for reload to finish");
                     for (;;) {
