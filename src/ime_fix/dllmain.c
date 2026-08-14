@@ -54,6 +54,10 @@
    whole log to go quiet is wrong (menu-init logs keep flowing) and too
    short a quiet window freezes the UI mid-reload. */
 #define RELOAD_ACTIVE_TAG "AnmCache: cannot remove reference"
+/* Reload-complete signal (user-verified fast path on older builds):
+   "AnmCache: Clear" - tried again per user request. If the current game
+   version never prints it, the 30s cap falls back to run-start. */
+#define RELOAD_DONE_TAG "AnmCache: Clear"
 #define RUN_TAG "[IME_RUN_STARTED]"         /* Lua mod per-run marker (MC_POST_GAME_STARTED) */
 #define MAX_SCAN 262144            /* cap for appended log.txt scan window (256KB) */
 #define POLL_WINDOW_S 12           /* only poll during the game's mod-load window */
@@ -388,6 +392,8 @@ static DWORD WINAPI worker(LPVOID param)
             growing for ~3s (game back at main menu, input idle) -> safe. */
     ime_log("main", "mod not enabled at launch - monitoring for safe disable trigger");
     BOOL waiting_reload = FALSE; /* a mod-execution marker was seen; waiting for reload to settle */
+    BOOL toggle_failed = FALSE;  /* the reload-complete signal never came - do not retry */
+    DWORD reload_t0 = 0;
     for (;;) {
         /* Trigger a): a single-player run started. */
         if (run_started_since(savePath, baseline)) {
@@ -400,54 +406,30 @@ static DWORD WINAPI worker(LPVOID param)
            must have toggled it on in the Mods menu (the game reloads all
            mods, re-running main.lua and re-logging "Running Lua Script").
            Disabling IMMEDIATELY while the game is mid-reload freezes the UI,
-           so wait for the log to stop growing (reload finished, game idle at
-           the main menu) - no text signal for "reload done" exists in the
-           real game log, hence the stability proxy. If a run starts during
-           the wait, trigger a) fires instead (equally safe). */
-        if (!waiting_reload && mod_loaded_since(savePath, baseline)) {
-            ime_log("main", "mod toggled in-game - waiting for reload to finish");
+           so wait for the reload-complete signal "AnmCache: Clear" (fast
+           path restored per user's earlier verified experience). If the
+           signal never comes (game version without it), 30s cap falls back
+           to trigger a). */
+        if (!waiting_reload && !toggle_failed && mod_loaded_since(savePath, baseline)) {
+            ime_log("main", "mod toggled in-game - waiting for reload to finish (AnmCache: Clear)");
             waiting_reload = TRUE;
+            reload_t0 = GetTickCount();
         }
         if (waiting_reload) {
-            /* Reload completion has NO reliable text signal in the real game
-               log ("AnmCache: Clear" does not exist; the "cannot remove
-               reference" signature only covers the early resource-release
-               phase; the whole log stays busy with menu-init writes after
-               reload). Strategy: wait a FIXED 5s (covers the typical reload
-               on this machine, measured ~8s end-to-end incl. menu init;
-               the user needs a couple of seconds to leave the Mods page
-               anyway, so the disable lands as the menu becomes usable) and
-               EXTEND while the reload signature is still flowing (slow
-               reloads / many mods). Run-start fires earlier when a run
-               begins. 30s hard cap. */
-            DWORD scan_from = 0;
-            DWORD size = 0;
-            DWORD t0 = GetTickCount();
-            if (!get_log_size(savePath, &scan_from))
-                scan_from = baseline;
-            for (;;) {
-                Sleep(500);
-                if (run_started_since(savePath, baseline)) {
-                    ImmDisableIME(-1);
-                    ime_log("main", "per-run marker - IME disabled at run start");
-                    return 0;
-                }
-                if (!get_log_size(savePath, &size))
-                    break;
-                if (GetTickCount() - t0 >= 5000) {
-                    /* minimum wait covered: only keep waiting while the
-                       reload signature is still flowing */
-                    if (marker_since(savePath, scan_from, RELOAD_ACTIVE_TAG)) {
-                        scan_from = size;
-                        if (GetTickCount() - t0 > 30000)
-                            break; /* 30s cap */
-                        continue;
-                    }
-                    ImmDisableIME(-1);
-                    ime_log("main", "mod toggled in-game - IME disabled after reload finished");
-                    return 0;
-                }
-                scan_from = size;
+            /* Wait for the reload-complete signal "AnmCache: Clear" (the
+               fast, user-verified path from earlier builds). Run-start
+               fires earlier when a run begins. If the signal never appears
+               within 30s (game version does not print it), give up this
+               attempt and keep monitoring trigger a). */
+            if (marker_since(savePath, baseline, RELOAD_DONE_TAG)) {
+                ImmDisableIME(-1);
+                ime_log("main", "mod toggled in-game - IME disabled after reload finished (AnmCache: Clear)");
+                return 0;
+            }
+            if (GetTickCount() - reload_t0 > 30000) {
+                ime_log("main", "AnmCache: Clear not seen in 30s - waiting for run start");
+                toggle_failed = TRUE;
+                waiting_reload = FALSE;
             }
         }
         Sleep(RUN_POLL_MS);
