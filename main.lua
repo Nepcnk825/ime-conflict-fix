@@ -1,5 +1,5 @@
 -- IME Conflict Fix for The Binding of Isaac: Repentance+
--- Version: 0.3.2
+-- Version: 0.3.3
 --
 -- Signal mod:
 --   1. Execution marker: "Running Lua Script: .../main.lua" (Phase 1 startup).
@@ -16,30 +16,26 @@ local MOD_VERSION = "0.3.1"
 
 local mod = RegisterMod(MOD_NAME, 1)
 
-local FREEZE_DELAY_FRAMES = 60     -- 1s after load (reload/menu settle)
-local FREEZE_MS = 600              -- controlled freeze window (minimized: DLL detects in ~200ms, calls in ~100ms)
+local FREEZE_DELAY_FRAMES = 60     -- 1s after load, signal the DLL
 local frameCount = 0
-local frozen = false
+local signaled = false
 
 function mod:onGameStart()
     Isaac.DebugString("[IME_RUN_STARTED]")
 end
 
 function mod:onRender()
-    if frozen then
+    if signaled then
         return
     end
     frameCount = frameCount + 1
     if frameCount == FREEZE_DELAY_FRAMES then
+        -- Tell the DLL we are (re)loaded and the menu is settling. The DLL
+        -- suspends the game main thread itself (no Lua timing API needed -
+        -- os/io are disabled in the sandbox), disables the IME inside that
+        -- controlled window and resumes. Player-visible freeze: ~100ms.
         Isaac.DebugString("[IME_FREEZE]")
-        -- Busy-wait on the game main thread: no input is processed during
-        -- this window, giving the DLL a guaranteed-safe moment to disable
-        -- the IME.
-        local t0 = os.clock()
-        while os.clock() - t0 < FREEZE_MS / 1000.0 do
-            -- spin
-        end
-        frozen = true
+        signaled = true
     end
 end
 

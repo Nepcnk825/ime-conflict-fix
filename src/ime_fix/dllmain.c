@@ -33,6 +33,7 @@
 
 #include <windows.h>
 #include <imm.h>
+#include <tlhelp32.h>
 #include "ime_fix.h"
 
 #pragma comment(lib, "imm32.lib")
@@ -339,6 +340,41 @@ static BOOL run_started_since(const char *savePath, DWORD from_offset)
 /* ====================================================================
  * Worker thread
  * ==================================================================== */
+
+/* Find the process main thread (earliest creation time among our threads). */
+static DWORD find_main_thread_id(void)
+{
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, GetCurrentProcessId());
+    THREADENTRY32 te;
+    DWORD best = 0;
+    ULONGLONG best_time = 0;
+    int have = 0;
+
+    if (snap == INVALID_HANDLE_VALUE)
+        return 0;
+    te.dwSize = sizeof(te);
+    if (Thread32First(snap, &te)) {
+        do {
+            if (te.th32OwnerProcessID != GetCurrentProcessId())
+                continue;
+            HANDLE h = OpenThread(THREAD_QUERY_INFORMATION, FALSE, te.th32ThreadID);
+            if (h) {
+                FILETIME c, e, k, u;
+                if (GetThreadTimes(h, &c, &e, &k, &u)) {
+                    ULONGLONG t = ((ULONGLONG)c.dwHighDateTime << 32) | c.dwLowDateTime;
+                    if (!have || t < best_time) {
+                        best = te.th32ThreadID;
+                        best_time = t;
+                        have = 1;
+                    }
+                }
+                CloseHandle(h);
+            }
+        } while (Thread32Next(snap, &te));
+    }
+    CloseHandle(snap);
+    return best;
+}
 
 static DWORD WINAPI worker(LPVOID param)
 {
