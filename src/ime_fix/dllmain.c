@@ -47,11 +47,11 @@
 #define POLL_INTERVAL_MS 2000      /* startup-window poll interval */
 #define RUN_POLL_MS 3000           /* per-run marker poll interval (after window) */
 
-/* Our own module handle (set in DllMain). Used to resolve our own directory:
-   GetModuleFileNameA(g_hself) returns ime_fix.dll's own path - with NULL it
-   would return the HOST exe's path, which is only correct by luck when the
-   host sits in the same directory (see savedatapath.txt resolution below). */
-static HMODULE g_hself = NULL;
+/* NOTE: this DLL is loaded from the mods folder by ime_loader.dll. It never
+   resolves its own path for configuration - the loader sets the
+   IME_FIX_GAME_DIR environment variable (game root, where savedatapath.txt
+   and log.txt live) before loading us. */
+#define GAME_DIR_ENV "IME_FIX_GAME_DIR"
 
 /* ====================================================================
  * Minimal string helpers (no CRT: no strlen/strcmp/strstr/strcat)
@@ -168,34 +168,24 @@ static void build_fallback_path(char *out, DWORD outSize)
 }
 
 /*
- * Resolve the save data path. Reads savedatapath.txt next to this DLL
- * (found via GetModuleFileNameA) and parses the "Save Data Path:" line.
- * Falls back to the default My Games location on any failure.
+ * Resolve the save data path. Preferred source: the IME_FIX_GAME_DIR
+ * environment variable set by ime_loader.dll (the game root - this DLL
+ * lives in the mods folder and cannot see savedatapath.txt next to
+ * itself). Reads and parses the "Save Data Path:" line from
+ * savedatapath.txt, falls back to the default My Games location.
  */
 static void resolve_save_path(char *out, DWORD outSize)
 {
-    char dllPath[MAX_PATH];
+    char gameDir[MAX_PATH];
     char cfgPath[MAX_PATH];
     char cfg[MAX_PATH * 2];
-    DWORD n = GetModuleFileNameA(g_hself, dllPath, MAX_PATH);
-    int last = -1, i;
 
-    if (n == 0 || n >= MAX_PATH)
-        goto fallback;
-
-    for (i = 0; dllPath[i]; i++)
-        if (dllPath[i] == '\\' || dllPath[i] == '/')
-            last = i;
-    if (last < 0)
-        goto fallback;
-    dllPath[last + 1] = 0; /* keep trailing separator */
-
-    build_path(cfgPath, sizeof(cfgPath), dllPath, "savedatapath.txt");
-    if (read_file_to_buf(cfgPath, cfg, sizeof(cfg)) &&
-        parse_save_data_path(cfg, out, outSize) && out[0])
-        return;
-
-fallback:
+    if (GetEnvironmentVariableA(GAME_DIR_ENV, gameDir, MAX_PATH) > 0) {
+        build_path(cfgPath, sizeof(cfgPath), gameDir, "\\savedatapath.txt");
+        if (read_file_to_buf(cfgPath, cfg, sizeof(cfg)) &&
+            parse_save_data_path(cfg, out, outSize) && out[0])
+            return;
+    }
     build_fallback_path(out, outSize);
 }
 
@@ -430,7 +420,6 @@ BOOL WINAPI DllMain(HINSTANCE h, DWORD r, LPVOID x)
     (void)x;
     if (r == DLL_PROCESS_ATTACH) {
         DisableThreadLibraryCalls(h);
-        g_hself = h;
         ime_log("main", "ime_fix.dll v" IME_FIX_STRING " loaded (startup-disable mode)");
         CloseHandle(CreateThread(NULL, 0, worker, NULL, 0, NULL));
     }

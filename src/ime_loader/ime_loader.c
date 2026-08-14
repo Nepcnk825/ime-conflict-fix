@@ -1,21 +1,24 @@
 /*
- * ime_loader.dll - Loader/updater for IME Conflict Fix
+ * ime_loader.dll - Thin loader for IME Conflict Fix (v0.4 architecture)
  *
- * Architecture (mirrors the official CN patch's bootstp.dll + inject.dll):
+ * Architecture:
  *
  *   isaac-ng.exe → imports ime_loader.dll!IME_Init (PE patch)
- *   ime_loader.dll (this file, rarely updated)
- *     → on load: compares  <game>\mods\ime-conflict-fix\ime_fix.bin
- *                 vs        <game>\ime_fix.dll
- *       if .bin is newer/different → copy it over ime_fix.dll
- *       (safe: ime_fix.dll is NOT loaded yet - we load it AFTER the copy)
- *     → LoadLibrary("ime_fix.dll") → runs the actual IME logic (latest version)
+ *   ime_loader.dll (game root, NEVER updates)
+ *     → sets env var IME_FIX_GAME_DIR = <game root> (ime_fix.dll lives in
+ *       mods now and needs to find savedatapath.txt next to the exe)
+ *     → LoadLibrary("mods\ime-conflict-fix\ime_fix.bin") directly
  *
- * Why two layers: a running DLL cannot overwrite itself (sharing violation,
- * error 32). By keeping the loader tiny and stable, the functional DLL
- * (ime_fix.dll, updated via Steam workshop as ime_fix.bin) can always be
- * replaced at startup before being loaded. The loader itself rarely changes,
- * so it never needs self-updating.
+ * The functional DLL (ime_fix.bin) now lives IN the mods folder, so Steam
+ * workshop updates replace it in place (no file is locked: the loader only
+ * holds a reference to the loaded module, and Steam pushes updates while
+ * the game is closed). The game root keeps exactly ONE file (this loader),
+ * which never changes - no re-patching ever needed for mod updates.
+ *
+ * Why a loader at all: the exe's PE import must reference a DLL that exists
+ * in the game root (Windows import search: exe dir → system dirs → PATH;
+ * the mods folder is not searched). A running DLL cannot be replaced, but
+ * the loader itself is never replaced.
  *
  * Windows API only - no CRT (static /MT link). Deps: user32 (wsprintfW lives
  * in user32, NOT kernel32 - easy to get wrong), kernel32.
@@ -39,75 +42,30 @@ static int path_last_slash(const WCHAR *p)
     return last;
 }
 
-/* Compare two files by size + last-write time.
-   Returns 1 if src differs from dst (needs update), 0 if same, -1 on error. */
-static int file_differs(const WCHAR *src, const WCHAR *dst)
-{
-    WIN32_FILE_ATTRIBUTE_DATA a, b;
-    if (!GetFileAttributesExW(src, GetFileExInfoStandard, &a))
-        return -1;   /* src missing - nothing to sync */
-    if (!GetFileAttributesExW(dst, GetFileExInfoStandard, &b))
-        return 1;    /* dst missing - needs copy */
-
-    if (a.nFileSizeHigh != b.nFileSizeHigh || a.nFileSizeLow != b.nFileSizeLow)
-        return 1;
-    if (CompareFileTime(&a.ftLastWriteTime, &b.ftLastWriteTime) != 0)
-        return 1;
-    return 0;
-}
-
-/* Build "<game_dir>\mods\ime-conflict-fix\ime_fix.bin" into out.
-   game_dir comes from our own module path (we sit next to isaac-ng.exe). */
-static void build_bin_path(WCHAR *out, DWORD out_size)
-{
-    WCHAR self[MAX_PATH];
-    DWORD n = GetModuleFileNameW(g_hself, self, MAX_PATH);
-    if (n == 0 || n >= MAX_PATH) { out[0] = 0; return; }
-
-    int last = path_last_slash(self);
-    if (last < 0) { out[0] = 0; return; }
-    self[last + 1] = 0;  /* keep trailing separator */
-
-    wsprintfW(out, L"%smods\\ime-conflict-fix\\ime_fix.bin", self);
-}
-
-/* Sync ime_fix.bin (workshop-updated) over the game dir's ime_fix.dll,
-   then load the functional DLL. Called once from DllMain on attach. */
+/* Called once from DllMain on attach. */
 static void loader_run(void)
 {
     WCHAR bin[MAX_PATH];
     WCHAR self[MAX_PATH];
-    WCHAR dll[MAX_PATH];
     DWORD n = GetModuleFileNameW(g_hself, self, MAX_PATH);
-    if (n == 0 || n >= MAX_PATH) return;
+    if (n == 0 || n >= MAX_PATH)
+        return;
 
     int last = path_last_slash(self);
-    if (last < 0) return;
-    self[last + 1] = 0;
+    if (last < 0)
+        return;
+    self[last + 1] = 0; /* keep trailing separator = game root */
 
-    build_bin_path(bin, sizeof(bin));
-    wsprintfW(dll, L"%sime_fix.dll", self);
+    /* Tell ime_fix.dll where the game root is: it lives in mods now and
+       must resolve savedatapath.txt (next to the exe) to find log.txt.
+       Set BEFORE loading - its worker reads it 2s after attach. */
+    SetEnvironmentVariableW(L"IME_FIX_GAME_DIR", self);
 
-    if (bin[0]) {
-        int d = file_differs(bin, dll);
-        if (d == 1) {
-            /* ime_fix.dll is NOT loaded yet - safe to overwrite */
-            if (CopyFileW(bin, dll, FALSE))
-                loader_log("sync", "ime_fix.bin -> ime_fix.dll updated");
-            else
-                loader_log("sync", "copy ime_fix.bin failed");
-        } else if (d == 0) {
-            loader_log("sync", "ime_fix.dll up to date");
-        } else {
-            loader_log("sync", "ime_fix.bin not found - no auto-update");
-        }
-    }
-
-    /* Load the (possibly updated) functional DLL */
-    if (LoadLibraryW(dll))
-        loader_log("main", "ime_fix.dll loaded");
+    wsprintfW(bin, L"%smods\\ime-conflict-fix\\ime_fix.bin", self);
+    if (LoadLibraryW(bin))
+        loader_log("main", "ime_fix.bin loaded from mods folder");
     else
-        loader_log("main", "LoadLibraryW(ime_fix.dll) FAILED");
+        loader_log("main", "LoadLibraryW(mods\\ime-conflict-fix\\ime_fix.bin) FAILED");
 }
 
 BOOL WINAPI DllMain(HINSTANCE h, DWORD reason, LPVOID reserved)
