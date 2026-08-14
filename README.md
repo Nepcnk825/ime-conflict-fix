@@ -53,16 +53,16 @@
 >
 > | 文件 | MD5 | SHA256 |
 > |------|-----|--------|
-> | ime_fix.dll (84,992 B) | `6CC9DCD26835E8C95E95D064AD031FC7` | `188B942D380737B5CB0CD621DD31775612F162C6E95894E5902F306F1B6B2DC6` |
-> | ime_loader.dll (82,944 B) | `2D82BBA61A87E6D76BBDFFCF45CD720D` | `42EC167989CED013CE63911A7F7EA1047A1E965B783C3A88EAE6AF1F2D11580F` |
-> | ime_patcher.exe (135,168 B) | `9A44025DBF85D479A6D6544BCE80C9F8` | `66F7A2F631107C5D2F4D1C4B55EA189E439CDE4FAD9DA73251813A6BD661902A` |
+> | ime_fix.dll (84,992 B) | `EFAAFD2AF8987507C3CA2842FDE06B47` | `C954E1AF809E756B9C86A2511876857B822FB63072D7B6E478BEB916B12389E3` |
+> | ime_loader.dll (82,432 B) | `E343C2A1F1114966062541C5BC19059B` | `C1D65D99108CCD68263F4E59D0A445E1E3998A0D7FE64AC7632DE81C40E0AC37` |
+> | ime_patcher.exe (136,704 B) | `88BA79B481180A520AFB162DEC42EB8C` | `D652A5D6621FF569333ADACC6311EC97E500C06683DC6270337BE0B993621378` |
 
 ### 打补丁（一次性，全自动）
 
 **双击运行 `ime_patcher.exe`**。它会自动从 Steam 注册表找到以撒的游戏目录，弹出确认框，点"是"即完成：
 
 - 自动给 `isaac-ng.exe` 打补丁（备份为 `isaac-ng.exe.imefix.bak`）
-- **自动把 `ime_loader.dll` 复制到游戏目录**（它负责在启动时把创意工坊的 `ime_fix.bin` 同步为 `ime_fix.dll` 并加载，实现免重打补丁的自动更新）
+- **自动把 `ime_loader.dll` 复制到游戏目录**（唯一常驻文件，永不更新；启动时直接加载创意工坊的 `mods/ime-conflict-fix/ime_fix.bin`，实现免重打补丁的自动更新）
 - 如果装有官中补丁，会自动把其 config.ini 的 check 改为 -1（消除启动校验弹窗）
 
 全程无需手动操作。**这个步骤只需要做一次**，不需要每次启动游戏都运行。
@@ -85,13 +85,13 @@
 
 **双击运行 `ime_patcher.exe`，选中已补丁的 `isaac-ng.exe`**，自动还原。卸载时会自动：
 
-1. 用 `isaac-ng.exe.imefix.bak` 还原 exe（官中补丁的 bootstp 导入会保留，汉化不受影响）
-2. 自动删除游戏目录中的 `ime_loader.dll` 和 `ime_fix.dll`
+1. 用 `isaac-ng.exe.imefix.bak` 还原 exe（官中补丁的修改会保留，汉化不受影响）
+2. 自动删除游戏目录中的 `ime_loader.dll`
 3. 自动恢复官中补丁 config.ini 的 check 原值（如果安装时改过）
 4. **完全清理**：还原后 exe 与官方原版 MD5 完全一致，无任何残留
 
-> 还原时保留 `.imefix.bak` 备份文件（防误操作）。如需连备份一起删除（零残留），
-> 在还原确认框点"否"（还原并完全清理），或命令行运行：
+> 还原确认框点"否"仅还原（保留 `.imefix.bak` 备份文件，防误操作）；点"是"还原并完全清理（连备份一起删除，零残留，推荐），
+> 或命令行运行：
 > `ime_patcher.exe --restore --clean "游戏目录\isaac-ng.exe"`
 
 其他清理：

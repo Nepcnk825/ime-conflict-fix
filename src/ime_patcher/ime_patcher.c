@@ -728,13 +728,13 @@ static int gui_mode(void)
     if (st == 1) {
         int r = msg_box(
             "该 exe 已经被 IME 修复打补丁。\n\n"
-            "点击\"是\"：还原（保留备份文件 .imefix.bak）。\n"
-            "点击\"否\"：还原并完全清理（删除备份，零残留）。\n"
+            "点击\"是\"：还原并完全清理（删除备份，零残留）。\n"
+            "点击\"否\"：仅还原（保留备份文件 .imefix.bak）。\n"
             "点击\"取消\"：不操作。",
             "已打补丁 - IME 修复", MB_YESNOCANCEL | MB_ICONQUESTION);
         if (r == IDCANCEL)
             return 0;
-        int rc = do_restore(file, (r == IDNO) ? 1 : 0);
+        int rc = do_restore(file, (r == IDYES) ? 1 : 0);
         if (rc == 0)
             msg_box("还原成功。\n\nexe 已恢复到补丁前状态，\nime_loader.dll 和 ime_fix.dll 已从游戏目录删除。\n\n"
                     "(若选择完全清理，备份文件也已删除)",
