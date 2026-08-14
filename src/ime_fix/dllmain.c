@@ -409,12 +409,17 @@ static DWORD WINAPI worker(LPVOID param)
             waiting_reload = TRUE;
         }
         if (waiting_reload) {
-            /* Reload-done detection via the reload-active signature lines.
-               The game prints "AnmCache: cannot remove reference ..." while
-               reloading mods and stops when done. We disable as soon as no
-               new signature line appears for one 500ms window (after a 1s
-               grace period that lets the signature start). A run starting
-               during the wait fires trigger a) instead. 30s hard cap. */
+            /* Reload completion has NO reliable text signal in the real game
+               log ("AnmCache: Clear" does not exist; the "cannot remove
+               reference" signature only covers the early resource-release
+               phase; the whole log stays busy with menu-init writes after
+               reload). Strategy: wait a FIXED 5s (covers the typical reload
+               on this machine, measured ~8s end-to-end incl. menu init;
+               the user needs a couple of seconds to leave the Mods page
+               anyway, so the disable lands as the menu becomes usable) and
+               EXTEND while the reload signature is still flowing (slow
+               reloads / many mods). Run-start fires earlier when a run
+               begins. 30s hard cap. */
             DWORD scan_from = 0;
             DWORD size = 0;
             DWORD t0 = GetTickCount();
@@ -429,18 +434,20 @@ static DWORD WINAPI worker(LPVOID param)
                 }
                 if (!get_log_size(savePath, &size))
                     break;
-                if (marker_since(savePath, scan_from, RELOAD_ACTIVE_TAG)) {
-                    /* reload still in progress */
-                    scan_from = size;
-                    if (GetTickCount() - t0 > 30000)
-                        break; /* 30s cap - give up this attempt */
-                    continue;
+                if (GetTickCount() - t0 >= 5000) {
+                    /* minimum wait covered: only keep waiting while the
+                       reload signature is still flowing */
+                    if (marker_since(savePath, scan_from, RELOAD_ACTIVE_TAG)) {
+                        scan_from = size;
+                        if (GetTickCount() - t0 > 30000)
+                            break; /* 30s cap */
+                        continue;
+                    }
+                    ImmDisableIME(-1);
+                    ime_log("main", "mod toggled in-game - IME disabled after reload finished");
+                    return 0;
                 }
-                if (GetTickCount() - t0 < 1000)
-                    continue; /* 1s grace before concluding reload is done */
-                ImmDisableIME(-1);
-                ime_log("main", "mod toggled in-game - IME disabled after reload finished");
-                return 0;
+                scan_from = size;
             }
         }
         Sleep(RUN_POLL_MS);
