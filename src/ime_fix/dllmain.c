@@ -406,10 +406,10 @@ static DWORD WINAPI worker(LPVOID param)
             /* Fast reload-complete detection: check every 500ms, disable as
                soon as the log stops growing (reload done, game idle at the
                main menu). A run starting during the wait fires trigger a)
-               instead. If the log keeps growing for 15s (game busy), give up
+               instead. If the log keeps growing for 5s (game busy), give up
                this attempt and keep monitoring - run-start still works. */
             DWORD t0 = GetTickCount();
-            while (GetTickCount() - t0 < 15000) {
+            while (GetTickCount() - t0 < 5000) {
                 DWORD s1 = 0, s2 = 0;
                 if (!get_log_size(savePath, &s1))
                     break;
