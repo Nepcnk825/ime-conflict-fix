@@ -18,3 +18,12 @@ workshop_upload/
 # ===== OS noise =====
 Thumbs.db
 Desktop.ini
+
+# ===== Dev-internal docs (keep local, never on GitHub) =====
+.learnings/
+AGENTS.md
+COMPAT.md
+INTEGRATION_TEST.md
+RELEASE.md
+TEST_RECORDS.md
+WORKSHOP.md
