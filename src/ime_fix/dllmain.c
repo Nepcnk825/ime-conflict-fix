@@ -63,7 +63,7 @@
 #define MAX_SCAN 262144            /* cap for appended log.txt scan window (256KB) */
 #define POLL_WINDOW_S 12           /* only poll during the game's mod-load window */
 #define POLL_INTERVAL_MS 2000      /* startup-window poll interval */
-#define RUN_POLL_MS 500            /* Phase 2 poll interval: fast marker discovery (~1s to disable after toggle) */
+#define RUN_POLL_MS 200            /* Phase 2 poll interval: fast signal discovery (freeze window is short) */
 
 /* NOTE: this DLL is loaded from the mods folder by ime_loader.dll. It never
    resolves its own path for configuration - the loader sets the

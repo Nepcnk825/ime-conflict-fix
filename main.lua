@@ -1,5 +1,5 @@
 -- IME Conflict Fix for The Binding of Isaac: Repentance+
--- Version: 0.3.1
+-- Version: 0.3.2
 --
 -- Signal mod:
 --   1. Execution marker: "Running Lua Script: .../main.lua" (Phase 1 startup).
@@ -17,7 +17,7 @@ local MOD_VERSION = "0.3.1"
 local mod = RegisterMod(MOD_NAME, 1)
 
 local FREEZE_DELAY_FRAMES = 60     -- 1s after load (reload/menu settle)
-local FREEZE_MS = 1500             -- controlled freeze window
+local FREEZE_MS = 600              -- controlled freeze window (minimized: DLL detects in ~200ms, calls in ~100ms)
 local frameCount = 0
 local frozen = false
 
