@@ -11,8 +11,8 @@
 /* Version */
 #define IME_LOADER_MAJOR 0
 #define IME_LOADER_MINOR 2
-#define IME_LOADER_PATCH 0
-#define IME_LOADER_STRING "0.2.0"
+#define IME_LOADER_PATCH 1
+#define IME_LOADER_STRING "0.2.1"
 
 /* Shared debug logging - writes to %APPDATA%\ime-conflict-fix\debug.log */
 static void loader_log(const char *tag, const char *message)

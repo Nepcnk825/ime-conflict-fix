@@ -7,9 +7,17 @@
  *   ime_loader.dll (game root, NEVER updates)
  *     → sets env var IME_FIX_GAME_DIR = <game root> (ime_fix.dll lives in
  *       mods now and needs to find savedatapath.txt next to the exe)
- *     → LoadLibrary("mods\ime-conflict-fix\ime_fix.bin") directly
+ *     → finds the mod folder (prefix "ime-conflict-fix") and
+ *       LoadLibrary("<mods>/<folder>/ime_fix.bin") directly
  *
- * The functional DLL (ime_fix.bin) now lives IN the mods folder, so Steam
+ * Folder-name note: Steam Workshop downloads mods as "<directory>_<id>",
+ * e.g. ime-conflict-fix_3783304248 (all subscribed mods look like this:
+ * cn_rep+_3568677664 ...). Local/manual installs may use the bare
+ * "ime-conflict-fix" name. The loader therefore ENUMERATES mods\ and picks
+ * the first directory whose name starts with "ime-conflict-fix" that
+ * contains ime_fix.bin - both layouts work.
+ *
+ * The functional DLL (ime_fix.bin) lives IN the mods folder, so Steam
  * workshop updates replace it in place (no file is locked: the loader only
  * holds a reference to the loaded module, and Steam pushes updates while
  * the game is closed). The game root keeps exactly ONE file (this loader),
@@ -32,6 +40,8 @@
    host exe's path - the host might live elsewhere (e.g. rundll32 tests). */
 static HMODULE g_hself = NULL;
 
+#define MOD_DIR_PREFIX L"ime-conflict-fix"  /* matches bare name and Steam's <name>_<id> */
+
 /* Find the last '\' or '/' in a path, return its index or -1. */
 static int path_last_slash(const WCHAR *p)
 {
@@ -40,6 +50,62 @@ static int path_last_slash(const WCHAR *p)
         if (p[i] == L'\\' || p[i] == L'/')
             last = i;
     return last;
+}
+
+/* Match a mods-subdirectory name: starts with "ime-conflict-fix" (Steam
+   appends _<workshop id>, manual installs don't). */
+static BOOL dir_name_matches(const WCHAR *name)
+{
+    int i = 0;
+    while (MOD_DIR_PREFIX[i] && name[i] == MOD_DIR_PREFIX[i])
+        i++;
+    if (MOD_DIR_PREFIX[i] != 0)
+        return FALSE; /* prefix not fully matched */
+    /* next char must be end-of-string or a separator like '_' */
+    return name[i] == 0 || name[i] == L'_' || name[i] == L'-';
+}
+
+/* Find "<game root>\mods\<matching folder>\ime_fix.bin".
+   Enumerates mods\, prefers a folder whose ime_fix.bin exists.
+   Returns TRUE and fills out on success. */
+static BOOL find_bin_path(const WCHAR *game_root, WCHAR *out, DWORD out_size)
+{
+    WCHAR pattern[MAX_PATH];
+    WCHAR folder[MAX_PATH];
+    WIN32_FIND_DATAW fd;
+    HANDLE h;
+    WCHAR first_match[MAX_PATH];
+    BOOL have_first = FALSE;
+
+    wsprintfW(pattern, L"%smods\\*", game_root);
+    h = FindFirstFileW(pattern, &fd);
+    if (h == INVALID_HANDLE_VALUE)
+        return FALSE;
+    do {
+        if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+            continue;
+        if (fd.cFileName[0] == L'.')
+            continue;
+        if (!dir_name_matches(fd.cFileName))
+            continue;
+        wsprintfW(folder, L"%smods\\%s\\ime_fix.bin", game_root, fd.cFileName);
+        if (!have_first) {
+            /* remember the first name match in case none has the bin */
+            wsprintfW(first_match, L"%s", folder);
+            have_first = TRUE;
+        }
+        if (GetFileAttributesW(folder) != INVALID_FILE_ATTRIBUTES) {
+            wsprintfW(out, L"%s", folder);
+            FindClose(h);
+            return TRUE;
+        }
+    } while (FindNextFileW(h, &fd));
+    FindClose(h);
+    if (have_first) {
+        wsprintfW(out, L"%s", first_match);
+        return TRUE;
+    }
+    return FALSE;
 }
 
 /* Called once from DllMain on attach. */
@@ -61,11 +127,14 @@ static void loader_run(void)
        Set BEFORE loading - its worker reads it 2s after attach. */
     SetEnvironmentVariableW(L"IME_FIX_GAME_DIR", self);
 
-    wsprintfW(bin, L"%smods\\ime-conflict-fix\\ime_fix.bin", self);
-    if (LoadLibraryW(bin))
-        loader_log("main", "ime_fix.bin loaded from mods folder");
-    else
-        loader_log("main", "LoadLibraryW(mods\\ime-conflict-fix\\ime_fix.bin) FAILED");
+    if (find_bin_path(self, bin, sizeof(bin))) {
+        if (LoadLibraryW(bin))
+            loader_log("main", "ime_fix.bin loaded from mods folder");
+        else
+            loader_log("main", "LoadLibraryW(ime_fix.bin) FAILED");
+    } else {
+        loader_log("main", "mods folder not found (no ime-conflict-fix* dir)");
+    }
 }
 
 BOOL WINAPI DllMain(HINSTANCE h, DWORD reason, LPVOID reserved)

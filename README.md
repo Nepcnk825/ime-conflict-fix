@@ -18,8 +18,8 @@
 ### 方式一：Steam 创意工坊订阅（推荐）
 
 1. 在 Steam 创意工坊搜索 "IME Conflict Fix" 并订阅（等待 Steam 下载完成）
-2. 打开游戏的 mods 文件夹（Steam 库 -> 右键以撒 -> 管理 -> 浏览本地文件 -> 进入 `mods/` 目录），确认其中已有 `ime-conflict-fix` 文件夹
-3. 进入 `mods/ime-conflict-fix/`，**解压其中的 `ime_loader.zip`**，得到 `ime_patcher.exe` 和 `ime_loader.dll`（保持在同一文件夹）
+2. 打开游戏的 mods 文件夹（Steam 库 -> 右键以撒 -> 管理 -> 浏览本地文件 -> 进入 `mods/` 目录），确认其中已有 `ime-conflict-fix` 开头的文件夹（Steam 订阅下载为 `ime-conflict-fix_<id>` 形式，如 `ime-conflict-fix_3783304248`；加载器会自动查找）
+3. 进入 mods 下 `ime-conflict-fix` 开头的文件夹，**解压其中的 `ime_loader.zip`**，得到 `ime_patcher.exe` 和 `ime_loader.dll`（保持在同一文件夹）
 4. 运行 `ime_patcher.exe` 打补丁（见下方"打补丁"）
 5. 启动游戏，在主菜单 **Mods** 菜单中启用 "IME Conflict Fix"
 
@@ -118,10 +118,10 @@ A: **忏悔+官中补丁：实测可共用，且无安装顺序要求**（先装
 A: **需要**。Steam 更新游戏时会用新的 exe 覆盖旧的，之前的补丁就没了。更新后重新运行一次 `ime_patcher.exe` 即可（一分钟搞定）。
 
 ### Q: Mod 更新后需要重新打补丁吗？
-A: **不需要**。Mod 更新（Lua 脚本或 DLL）都会通过 Steam 自动同步到 `mods/ime-conflict-fix/`，游戏启动时 `ime_loader.dll` 会直接加载 `ime_fix.bin` 的新版本，全程无感。只有**游戏本体**更新（Steam 覆盖 exe）时才需要重新打补丁。
+A: **不需要**。Mod 更新（Lua 脚本或 DLL）都会通过 Steam 自动同步到 mods 下 `ime-conflict-fix` 开头的文件夹，游戏启动时 `ime_loader.dll` 会直接加载 `ime_fix.bin` 的新版本，全程无感。只有**游戏本体**更新（Steam 覆盖 exe）时才需要重新打补丁。
 
 ### Q: 这个补丁会改坏游戏吗？
-A: 不会。`ime_patcher.exe` 只往 exe 的导入表里加一个条目，让游戏启动时自动加载 `ime_loader.dll`（它再加载 mods 文件夹里的 `ime_fix.bin`）。打补丁前会自动生成 `isaac-ng.exe.imefix.bak` 备份，随时可以还原。**即使出现问题，也可以在 Steam 里对以撒右键 -> 属性 -> 已安装文件 -> 验证游戏文件完整性**，即可恢复官方原版文件。
+A: 不会。`ime_patcher.exe` 只往 exe 的导入表里加一个条目，让游戏启动时自动加载 `ime_loader.dll`（它再加载 mods 文件夹里 `ime-conflict-fix` 开头的文件夹中的 `ime_fix.bin`）。打补丁前会自动生成 `isaac-ng.exe.imefix.bak` 备份，随时可以还原。**即使出现问题，也可以在 Steam 里对以撒右键 -> 属性 -> 已安装文件 -> 验证游戏文件完整性**，即可恢复官方原版文件。
 
 ### Q: 为什么需要 DLL？其他 Mod 不需要啊。
 A: 输入法管理需要操作系统层面的 API，以撒的 Lua Mod API 做不到这件事。所以本 Mod 用补丁的方式让游戏启动时自动加载一个 DLL 来完成。DLL 是纯 Windows API 实现的，没有运行时依赖，而且全程不联网、不注入其他进程。
