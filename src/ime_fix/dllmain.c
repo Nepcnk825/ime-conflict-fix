@@ -49,9 +49,7 @@
 #define MOD_FILE_TAG "/main.lua"        /* proves execution (not just enumeration) */
 #define MOD_GAP_MAX 64                  /* max chars between the two tags */
 #define RUN_TAG "[IME_RUN_STARTED]"         /* Lua mod per-run marker (MC_POST_GAME_STARTED) */
-#define MODS_MENU_TAG "Menu Mods Init"      /* logged when user enters the Mods menu */
-#define RELOAD_DONE_TAG "AnmCache: Clear"   /* logged when a mod reload finishes */
-#define MAX_SCAN 65536             /* cap for appended log.txt scan window */
+#define MAX_SCAN 262144            /* cap for appended log.txt scan window (256KB) */
 #define POLL_WINDOW_S 12           /* only poll during the game's mod-load window */
 #define POLL_INTERVAL_MS 2000      /* startup-window poll interval */
 #define RUN_POLL_MS 3000           /* per-run marker poll interval (after window) */
@@ -124,7 +122,8 @@ static BOOL contains(const char *haystack, const char *needle)
    max_gap characters AFTER that occurrence. Used for the mod-execution
    signal (folder prefix + "/main.lua") to avoid false positives on the
    "LOADED MOD" enumeration line which contains the folder name but not
-   "/main.lua". */
+   "/main.lua". ALL occurrences of needle1 are tried (the enumeration line
+   may precede the real execution line in the buffer). */
 static BOOL contains_pair(const char *haystack, const char *needle1,
                           const char *needle2, int max_gap)
 {
@@ -146,7 +145,7 @@ static BOOL contains_pair(const char *haystack, const char *needle1,
                 if (j == l2)
                     return TRUE;
             }
-            return FALSE; /* first needle1 occurrence without needle2: no match */
+            /* no needle2 after THIS occurrence - keep scanning for the next */
         }
     }
     return FALSE;
@@ -254,6 +253,30 @@ static BOOL get_log_size(const char *savePath, DWORD *outSize)
     return TRUE;
 }
 
+/* TRUE if log.txt size stays unchanged for wait_ms (checked every 500ms).
+   Used as a proxy for "mod reload finished": the game logs nothing while
+   sitting idle at the main menu after a reload, whereas mid-reload it is
+   still writing. */
+static BOOL log_stable_for(const char *savePath, DWORD wait_ms)
+{
+    DWORD prev = 0;
+    DWORD waited = 0;
+    DWORD now;
+
+    if (!get_log_size(savePath, &prev))
+        return FALSE;
+    while (waited < wait_ms) {
+        Sleep(500);
+        waited += 500;
+        if (!get_log_size(savePath, &now))
+            return FALSE;
+        if (now != prev)
+            return FALSE; /* log grew - reload (or something) still active */
+        prev = now;
+    }
+    return TRUE;
+}
+
 /* Read the log.txt range [from_offset, end) into a NUL-terminated buffer.
    Returns malloc'd buffer (caller frees) or NULL on any failure.
    The game appends to log.txt while we read, so use FILE_SHARE_WRITE. */
@@ -309,35 +332,6 @@ static BOOL marker_since(const char *savePath, DWORD from_offset, const char *ta
     return found;
 }
 
-/* Find the byte offset of the FIRST occurrence of tag in log.txt at/after
-   from_offset. Returns TRUE and fills *out_pos when found. */
-static BOOL find_marker_pos(const char *savePath, DWORD from_offset,
-                            const char *tag, DWORD *out_pos)
-{
-    DWORD rd = 0;
-    char *buf = read_log_range(savePath, from_offset, &rd);
-    BOOL found = FALSE;
-    int i, j;
-
-    if (!buf)
-        return FALSE;
-
-    int nl = my_strlen(tag);
-    if (nl > 0) {
-        for (i = 0; i + nl <= (int)rd; i++) {
-            for (j = 0; j < nl; j++)
-                if (buf[i + j] != tag[j]) break;
-            if (j == nl) {
-                *out_pos = from_offset + (DWORD)i;
-                found = TRUE;
-                break;
-            }
-        }
-    }
-    free(buf);
-    return found;
-}
-
 static BOOL mod_loaded_since(const char *savePath, DWORD from_offset)
 {
     DWORD rd = 0;
@@ -346,45 +340,6 @@ static BOOL mod_loaded_since(const char *savePath, DWORD from_offset)
     if (!buf)
         return FALSE;
     found = contains_pair(buf, MOD_DIR_TAG, MOD_FILE_TAG, MOD_GAP_MAX);
-    free(buf);
-    return found;
-}
-
-/* Like mod_loaded_since but fills *out_pos with the byte offset of the
-   "/main.lua" occurrence (used to scope the reload-done wait). */
-static BOOL mod_loaded_pos_since(const char *savePath, DWORD from_offset,
-                                 DWORD *out_pos)
-{
-    DWORD rd = 0;
-    char *buf = read_log_range(savePath, from_offset, &rd);
-    BOOL found = FALSE;
-    int i, j;
-
-    if (!buf)
-        return FALSE;
-    for (i = 0; i + (int)my_strlen(MOD_DIR_TAG) <= (int)rd; i++) {
-        const char *n1 = MOD_DIR_TAG;
-        int l1 = my_strlen(n1);
-        for (j = 0; j < l1; j++)
-            if (buf[i + j] != n1[j]) break;
-        if (j == l1) {
-            int gap_end = i + l1 + MOD_GAP_MAX;
-            int k;
-            const char *n2 = MOD_FILE_TAG;
-            int l2 = my_strlen(n2);
-            if (gap_end > (int)rd) gap_end = (int)rd;
-            for (k = i + l1; k + l2 <= gap_end; k++) {
-                for (j = 0; j < l2; j++)
-                    if (buf[k + j] != n2[j]) break;
-                if (j == l2) {
-                    *out_pos = from_offset + (DWORD)k;
-                    found = TRUE;
-                    break;
-                }
-            }
-            if (found) break;
-        }
-    }
     free(buf);
     return found;
 }
@@ -450,7 +405,7 @@ static DWORD WINAPI worker(LPVOID param)
             wait for "AnmCache: Clear" (reload done) plus the log to stop
             growing for ~3s (game back at main menu, input idle) -> safe. */
     ime_log("main", "mod not enabled at launch - monitoring for safe disable trigger");
-    BOOL toggle_failed = FALSE; /* trigger b gave up once - do not retry forever */
+    BOOL waiting_reload = FALSE; /* a mod-execution marker was seen; waiting for reload to settle */
     for (;;) {
         /* Trigger a): a single-player run started. */
         if (run_started_since(savePath, baseline)) {
@@ -459,43 +414,23 @@ static DWORD WINAPI worker(LPVOID param)
             return 0;
         }
 
-        /* Trigger b): user toggled mods in-game (marker after Mods menu).
+        /* Trigger b): the mod executed AFTER the startup window - the user
+           must have toggled it on in the Mods menu (the game reloads all
+           mods, re-running main.lua and re-logging "Running Lua Script").
            Disabling IMMEDIATELY while the game is mid-reload freezes the UI,
-           so wait for the reload-complete signal "AnmCache: Clear" that the
-           game logs right after all mods finish loading (before any user
-           action like starting a run). At that point the game is back at the
-           main menu with the input system idle - safe to disable, and fast
-           enough that starting a run right away still gets IME off first.
-           If the reload-complete signal never appears (game log format
-           changed?), give up after 60s: keep monitoring trigger a) instead
-           of spinning inside this branch forever. */
-        if (!toggle_failed) {
-            DWORD menu_pos = 0;
-            BOOL in_menu = find_marker_pos(savePath, baseline, MODS_MENU_TAG, &menu_pos);
-            if (in_menu) {
-                DWORD mod_pos = 0;
-                if (mod_loaded_pos_since(savePath, menu_pos, &mod_pos)) {
-                    DWORD t0 = GetTickCount();
-                    ime_log("main", "mod toggled in-game - waiting for reload to finish");
-                    for (;;) {
-                        Sleep(500);
-                        if (run_started_since(savePath, baseline)) {
-                            ImmDisableIME(-1);
-                            ime_log("main", "per-run marker - IME disabled at run start");
-                            return 0;
-                        }
-                        if (marker_since(savePath, mod_pos, RELOAD_DONE_TAG)) {
-                            ImmDisableIME(-1);
-                            ime_log("main", "mod toggled in-game - IME disabled after reload finished");
-                            return 0;
-                        }
-                        if (GetTickCount() - t0 > 60000) {
-                            ime_log("main", "reload-complete signal not seen in 60s - IME stays enabled");
-                            toggle_failed = TRUE;
-                            break;
-                        }
-                    }
-                }
+           so wait for the log to stop growing (reload finished, game idle at
+           the main menu) - no text signal for "reload done" exists in the
+           real game log, hence the stability proxy. If a run starts during
+           the wait, trigger a) fires instead (equally safe). */
+        if (!waiting_reload && mod_loaded_since(savePath, baseline)) {
+            ime_log("main", "mod toggled in-game - waiting for reload to finish (log idle)");
+            waiting_reload = TRUE;
+        }
+        if (waiting_reload) {
+            if (log_stable_for(savePath, 3000)) {
+                ImmDisableIME(-1);
+                ime_log("main", "mod toggled in-game - IME disabled after reload finished");
+                return 0;
             }
         }
         Sleep(RUN_POLL_MS);
