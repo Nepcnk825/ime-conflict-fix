@@ -4,6 +4,6 @@
     <directory>ime-conflict-fix</directory>
     <id>3783304248</id>
     <description>自动禁用以撒中开启的中文输入法，解决按键冲突问题。</description>
-    <version>0.4</version>
+    <version>0.5</version>
     <visibility>Public</visibility>
 </metadata>
