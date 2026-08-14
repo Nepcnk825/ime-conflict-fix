@@ -48,6 +48,12 @@
 #define MOD_DIR_TAG "ime-conflict-fix"  /* folder prefix, both namings */
 #define MOD_FILE_TAG "/main.lua"        /* proves execution (not just enumeration) */
 #define MOD_GAP_MAX 64                  /* max chars between the two tags */
+/* Reload-active signature: the game prints "AnmCache: cannot remove
+   reference to ..." lines WHILE reloading mods (verified in real logs) and
+   stops when done. Used as the reload-complete signal - waiting for the
+   whole log to go quiet is wrong (menu-init logs keep flowing) and too
+   short a quiet window freezes the UI mid-reload. */
+#define RELOAD_ACTIVE_TAG "AnmCache: cannot remove reference"
 #define RUN_TAG "[IME_RUN_STARTED]"         /* Lua mod per-run marker (MC_POST_GAME_STARTED) */
 #define MAX_SCAN 262144            /* cap for appended log.txt scan window (256KB) */
 #define POLL_WINDOW_S 12           /* only poll during the game's mod-load window */
@@ -403,29 +409,38 @@ static DWORD WINAPI worker(LPVOID param)
             waiting_reload = TRUE;
         }
         if (waiting_reload) {
-            /* Fast reload-complete detection: check every 500ms, disable as
-               soon as the log stops growing (reload done, game idle at the
-               main menu). A run starting during the wait fires trigger a)
-               instead. If the log keeps growing for 5s (game busy), give up
-               this attempt and keep monitoring - run-start still works. */
+            /* Reload-done detection via the reload-active signature lines.
+               The game prints "AnmCache: cannot remove reference ..." while
+               reloading mods and stops when done. We disable as soon as no
+               new signature line appears for one 500ms window (after a 1s
+               grace period that lets the signature start). A run starting
+               during the wait fires trigger a) instead. 30s hard cap. */
+            DWORD scan_from = 0;
+            DWORD size = 0;
             DWORD t0 = GetTickCount();
-            while (GetTickCount() - t0 < 5000) {
-                DWORD s1 = 0, s2 = 0;
-                if (!get_log_size(savePath, &s1))
-                    break;
+            if (!get_log_size(savePath, &scan_from))
+                scan_from = baseline;
+            for (;;) {
                 Sleep(500);
                 if (run_started_since(savePath, baseline)) {
                     ImmDisableIME(-1);
                     ime_log("main", "per-run marker - IME disabled at run start");
                     return 0;
                 }
-                if (!get_log_size(savePath, &s2))
+                if (!get_log_size(savePath, &size))
                     break;
-                if (s2 == s1) {
-                    ImmDisableIME(-1);
-                    ime_log("main", "mod toggled in-game - IME disabled after reload finished");
-                    return 0;
+                if (marker_since(savePath, scan_from, RELOAD_ACTIVE_TAG)) {
+                    /* reload still in progress */
+                    scan_from = size;
+                    if (GetTickCount() - t0 > 30000)
+                        break; /* 30s cap - give up this attempt */
+                    continue;
                 }
+                if (GetTickCount() - t0 < 1000)
+                    continue; /* 1s grace before concluding reload is done */
+                ImmDisableIME(-1);
+                ime_log("main", "mod toggled in-game - IME disabled after reload finished");
+                return 0;
             }
         }
         Sleep(RUN_POLL_MS);
