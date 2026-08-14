@@ -57,7 +57,8 @@
 /* Reload-complete signal (user-verified fast path on older builds):
    "AnmCache: Clear" - tried again per user request. If the current game
    version never prints it, the 30s cap falls back to run-start. */
-#define RUN_TAG "[IME_RUN_STARTED]"         /* Lua mod per-run marker (MC_POST_GAME_STARTED) */
+#define RUN_TAG "[IME_RUN_STARTED]"
+#define IDLE_TAG "[IME_IDLE]"              /* Lua: player had no input for 3s - quiescent, safe */         /* Lua mod per-run marker (MC_POST_GAME_STARTED) */
 #define MAX_SCAN 262144            /* cap for appended log.txt scan window (256KB) */
 #define POLL_WINDOW_S 12           /* only poll during the game's mod-load window */
 #define POLL_INTERVAL_MS 2000      /* startup-window poll interval */
@@ -424,7 +425,7 @@ static DWORD WINAPI worker(LPVOID param)
             menu). Disabling immediately would freeze the UI mid-reload, so
             wait for "AnmCache: Clear" (reload done) plus the log to stop
             growing for ~3s (game back at main menu, input idle) -> safe. */
-    ime_log("main", "mod not enabled at launch - monitoring for mod execution");
+    ime_log("main", "mod not enabled at launch - waiting for a safe disable moment");
     for (;;) {
         /* Trigger a): a single-player run started (verified freeze-free). */
         if (run_started_since(savePath, baseline)) {
@@ -433,27 +434,15 @@ static DWORD WINAPI worker(LPVOID param)
             return 0;
         }
 
-        /* Trigger b): the mod executed AFTER the startup window - the user
-           just toggled it on in the Mods menu (the game reloads all mods
-           and re-logs "Running Lua Script"). Take over IMMEDIATELY: suspend
-           the game main thread (guaranteed quiescence - no input, no UI
-           work, whatever the game was doing), disable the IME, resume.
-           The takeover lasts ~150ms and happens while the player is still
-           on the Mods page / just leaving it - imperceptible. */
-        if (mod_loaded_since(savePath, baseline)) {
-            DWORD main_tid = find_main_thread_id();
-            HANDLE hmain = OpenThread(THREAD_SUSPEND_RESUME, FALSE, main_tid);
-            if (hmain) {
-                SuspendThread(hmain);
-                Sleep(100);          /* let the main thread actually suspend */
-                ImmDisableIME(-1);
-                ResumeThread(hmain);
-                CloseHandle(hmain);
-                ime_log("main", "takeover (main thread suspended) - IME disabled");
-            } else {
-                ImmDisableIME(-1);
-                ime_log("main", "takeover fallback (no main thread) - IME disabled");
-            }
+        /* Trigger c): the Lua mod reports the player has been idle for 3
+           seconds ("[IME_IDLE]") - the game is quiescent (no input, no
+           popups, no page switches). ImmDisableIME is ONLY safe then
+           (verified: any call while the game is changing/being operated
+           freezes the UI; suspending the main thread deadlocks instead).
+           A player mashing keys never reaches this state - no freeze. */
+        if (marker_since(savePath, baseline, IDLE_TAG)) {
+            ImmDisableIME(-1);
+            ime_log("main", "player idle - IME disabled after 3s of no input");
             return 0;
         }
         Sleep(RUN_POLL_MS);
