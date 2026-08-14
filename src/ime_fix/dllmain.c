@@ -58,6 +58,7 @@
    "AnmCache: Clear" - tried again per user request. If the current game
    version never prints it, the 30s cap falls back to run-start. */
 #define RELOAD_DONE_TAG "AnmCache: Clear"
+#define IDLE_TAG "[IME_IDLE]"              /* Lua idle signal: player had no input for 3s - game quiescent, safe to disable */
 #define RUN_TAG "[IME_RUN_STARTED]"         /* Lua mod per-run marker (MC_POST_GAME_STARTED) */
 #define MAX_SCAN 262144            /* cap for appended log.txt scan window (256KB) */
 #define POLL_WINDOW_S 12           /* only poll during the game's mod-load window */
@@ -390,61 +391,24 @@ static DWORD WINAPI worker(LPVOID param)
             menu). Disabling immediately would freeze the UI mid-reload, so
             wait for "AnmCache: Clear" (reload done) plus the log to stop
             growing for ~3s (game back at main menu, input idle) -> safe. */
-    ime_log("main", "mod not enabled at launch - monitoring for safe disable trigger");
-    BOOL waiting_reload = FALSE; /* a mod-execution marker was seen; waiting for reload to settle */
-    BOOL toggle_failed = FALSE;  /* the reload-complete signal never came - do not retry */
-    DWORD reload_t0 = 0;
+    ime_log("main", "mod not enabled at launch - waiting for a safe disable moment");
     for (;;) {
-        /* Trigger a): a single-player run started. */
+        /* Trigger a): a single-player run started (verified freeze-free). */
         if (run_started_since(savePath, baseline)) {
             ImmDisableIME(-1);
             ime_log("main", "per-run marker - IME disabled at run start");
             return 0;
         }
 
-        /* Trigger b): the mod executed AFTER the startup window - the user
-           must have toggled it on in the Mods menu (the game reloads all
-           mods, re-running main.lua and re-logging "Running Lua Script").
-           Disabling IMMEDIATELY while the game is mid-reload freezes the UI,
-           so wait for the reload-complete signal "AnmCache: Clear" (fast
-           path restored per user's earlier verified experience). If the
-           signal never comes (game version without it), 30s cap falls back
-           to trigger a). */
-        if (!waiting_reload && !toggle_failed && mod_loaded_since(savePath, baseline)) {
-            ime_log("main", "mod toggled in-game - waiting for reload to finish (AnmCache: Clear)");
-            waiting_reload = TRUE;
-            reload_t0 = GetTickCount();
-        }
-        if (waiting_reload) {
-            /* Reload-done anchor: "AnmCache: Clear" (verified present in the
-               real game log right after the mods finish re-executing).
-               IMPORTANT: Clear only marks the mod-reload stage - the game
-               then initializes the main menu (Loading GameState etc.), and
-               ImmDisableIME during that window still freezes the UI (real
-               freeze observed with the immediate-disable version). So after
-               Clear appears we wait a fixed 2s grace (menu init window)
-               before disabling. Run-start fires earlier when a run begins.
-               30s cap on the whole attempt. */
-            if (marker_since(savePath, baseline, RELOAD_DONE_TAG)) {
-                DWORD grace_t0 = GetTickCount();
-                ime_log("main", "mod toggled in-game - reload done, waiting 2s for menu init");
-                while (GetTickCount() - grace_t0 < 2000) {
-                    Sleep(500);
-                    if (run_started_since(savePath, baseline)) {
-                        ImmDisableIME(-1);
-                        ime_log("main", "per-run marker - IME disabled at run start");
-                        return 0;
-                    }
-                }
-                ImmDisableIME(-1);
-                ime_log("main", "mod toggled in-game - IME disabled after reload finished");
-                return 0;
-            }
-            if (GetTickCount() - reload_t0 > 30000) {
-                ime_log("main", "AnmCache: Clear not seen in 30s - waiting for run start");
-                toggle_failed = TRUE;
-                waiting_reload = FALSE;
-            }
+        /* Trigger c): the Lua mod reports the player has been idle for 3
+           seconds ("[IME_IDLE]") - the game is quiescent (no menu init,
+           no popups, no input), which is the verified-safe condition for
+           ImmDisableIME. A player mashing keys never reaches this state,
+           so no freeze is possible. */
+        if (marker_since(savePath, baseline, IDLE_TAG)) {
+            ImmDisableIME(-1);
+            ime_log("main", "player idle - IME disabled after 3s of no input");
+            return 0;
         }
         Sleep(RUN_POLL_MS);
     }
