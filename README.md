@@ -139,7 +139,6 @@ certutil -hashfile src\ime_loader\ime_loader.dll MD5
 certutil -hashfile src\ime_patcher\ime_patcher.exe MD5
 ```
 
-源码（Lua/C/XML）可以直接查看，不需要校验码。下表只列无法直接查看行为的编译产物。
 当前 MSVC `/Brepro` 确定性构建校验码（2026-08-17）：
 
 | 文件 | 大小 | MD5 | SHA256 |
