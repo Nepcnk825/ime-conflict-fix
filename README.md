@@ -28,8 +28,8 @@ ime-conflict-fix/
 ```
 
 > **当前源码状态**：`ime_fix` v0.4.15-layout（online_force 主菜单保持英文；1ms 轮询；大厅标记去重修复；Enter 只开聊天、消息广播后才切回英文） / `ime_loader` v0.2.4 / `ime_patcher` v1.5 / `main.lua` v0.3.12。
-> 当前 `src/` 与上传暂存区中的二进制是 **MinGW 测试构建**（DLL 无 CRT 导入），用于本地验证；正式发布仍需在 Windows 上执行 MSVC `/Brepro` 构建。
-> 启动后才在游戏内启用 Mod 的场景，当前通过“开局信号”或“空闲 3 秒信号”触发禁用；这一方案正在等待用户实测，详见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
+> 当前源码已经过用户实机测试，Windows MSVC `/Brepro` 确定性构建已于 2026-08-17 完成并通过校验。
+> 游戏中途启用 Mod 的场景使用异步布局切换，不再依赖开局/空闲信号作为唯一路径，也不会在 UI 忙碌时卡死。
 
 ## 安装方法
 
@@ -74,18 +74,16 @@ ime-conflict-fix/
 > certutil -hashfile ime_patcher.exe MD5
 > ```
 >
-> **当前 MinGW 测试构建校验码（非发布，MSVC `/Brepro` 构建待执行）**：
->
+> **当前 MSVC `/Brepro` 确定性构建校验码（2026-08-17）**：
+
 > | 文件 | 大小 | MD5 | SHA256 |
 > |------|------|-----|--------|
-> | ime_fix.dll / ime_fix.bin | 19,968 B | `E0B3366B34F51EEA50C1CEF47C21C909` | `D27450A4A4A1531281E53075B036820A49A2B917877B35913B8CDD21E6C3A50C` |
-> | ime_loader.dll | 5,120 B | `AB957DFB668F751EC05A072032E5BBDF` | `36B68A4D770AB632E524E89AD13A61D7F79D993B38B7F6BA8E40D1CC6921BAFF` |
-> | ime_patcher.exe | 59,392 B | `7BD7485CC501A9B4013E965C3073D23B` | `6610F37256060B42BF0AC5FB0F3DFD2EB5904ECA97DE25B562B3D9B44E23109A` |
->
+> | ime_fix.dll / ime_fix.bin | 93,696 B | `74E64D06F79B1B61D4E0652DEC67DA9B` | `02B8BF6424F112451ECF9B10BBE5CE34DF6036A4C5628C3B8D1D46D95F8A026F` |
+> | ime_loader.dll | 82,944 B | `7E9F6A9D396A2EFE90DEAD7EDAE6085A` | `DFE7CF89E6ACFB7D063BE1CABC37B082C282E0F8A0A039F0B580754F6C2D7922` |
+> | ime_patcher.exe | 137,216 B | `C6C25A202704F56C06C5CC86B976B4F4` | `5C34D4038DFBA3097FCA935064214CF1DA4A4F212FEB4457EE72204675419659` |
+
 > 上一版 MSVC v0.3.6 产物备份在 `build/previous-msvc-v036/`（本地，不入库）。
 >
-> **正式发布状态：等待 Windows MSVC `/Brepro` 确定性构建。** 构建完成后用
-> `certutil -hashfile` 记录三个产物的 MD5，替换上表，再打包上传。
 > 完整发布步骤见 [docs/RELEASING.md](docs/RELEASING.md)。
 >
 ### 打补丁（一次性，全自动）

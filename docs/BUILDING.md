@@ -78,12 +78,12 @@ python3 tools/package_workshop.py
 - 打印每个产物的 SHA256/MD5/大小
 - 只生成暂存目录，**不会**执行创意工坊上传
 
-## 当前 MinGW 测试构建校验码（非发布）
+## 当前 MSVC /Brepro 确定性构建校验码（2026-08-17）
 
 | 文件 | 大小 | MD5 | SHA256 |
 |------|------|-----|--------|
-| `ime_fix.dll` / `ime_fix.bin`（当前 layout 方案） | 19,968 B | `E0B3366B34F51EEA50C1CEF47C21C909` | `D27450A4A4A1531281E53075B036820A49A2B917877B35913B8CDD21E6C3A50C` |
-| `ime_loader.dll` | 5,120 B | `AB957DFB668F751EC05A072032E5BBDF` | `36B68A4D770AB632E524E89AD13A61D7F79D993B38B7F6BA8E40D1CC6921BAFF` |
-| `ime_patcher.exe` | 59,392 B | `7BD7485CC501A9B4013E965C3073D23B` | `6610F37256060B42BF0AC5FB0F3DFD2EB5904ECA97DE25B562B3D9B44E23109A` |
+| `ime_fix.dll` / `ime_fix.bin`（当前 layout 方案） | 93,696 B | `74E64D06F79B1B61D4E0652DEC67DA9B` | `02B8BF6424F112451ECF9B10BBE5CE34DF6036A4C5628C3B8D1D46D95F8A026F` |
+| `ime_loader.dll` | 82,944 B | `7E9F6A9D396A2EFE90DEAD7EDAE6085A` | `DFE7CF89E6ACFB7D063BE1CABC37B082C282E0F8A0A039F0B580754F6C2D7922` |
+| `ime_patcher.exe` | 137,216 B | `C6C25A202704F56C06C5CC86B976B4F4` | `5C34D4038DFBA3097FCA935064214CF1DA4A4F212FEB4457EE72204675419659` |
 
-> 这是 Linux 下 MinGW-i686 生成的本地测试构建；`ime_fix.dll` / `ime_loader.dll` 无 CRT 导入。正式发布前必须在 Windows 上运行 MSVC `/Brepro` 构建并刷新本表。上一版 MSVC v0.3.6 产物备份在 `build/previous-msvc-v036/`。
+> 这是用户在 Windows 10 + Visual Studio 2022 17.14 下执行 `build_all.bat` 生成的确定性构建。上一版 MSVC v0.3.6 产物备份在 `build/previous-msvc-v036/`。

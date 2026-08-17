@@ -2,23 +2,23 @@
 
 > 当前仓库/创意工坊的具体状态记录在内部 `AGENTS.md` 与 `.dev/`，不要写入公开文档。
 
-## 发布前检查清单（v0.5.0 待发布）
+## 发布前检查清单（v0.5.0）
 
-1. 用户已完成 `docs/TESTING.md` 的联机/聊天/主菜单测试（当前 v0.4.15-layout 已通过）。
-2. 在 Windows 使用 Visual Studio 2022 执行确定性构建（MSVC `/Brepro`）。
-3. 记录三个 MSVC 产物的 MD5/SHA256/大小，替换以下文档中的“当前 MinGW 测试构建”表：
+1. [x] 用户已完成联机/聊天/主菜单测试（v0.4.15-layout 已通过）。
+2. [x] 已在 Windows + VS 2022 17.14 完成 MSVC `/Brepro` 确定性构建。
+3. [x] 已记录 MSVC 产物的 MD5/SHA256/大小，并更新以下文档：
    - `README.md`
    - `docs/BUILDING.md`
    - `docs/TEST_RECORDS.md`
-4. 确认版本号：
+4. [x] 确认版本号：
    - `main.lua`：0.3.12
    - `ime_fix`：0.4.15-layout
    - `ime_loader`：0.2.4
    - `ime_patcher`：v1.5
    - `metadata.xml`：0.8（更新日志已写入 v0.5.0 条目）
-5. 运行 `python tools\package_workshop.py`，确认打印哈希与 MSVC 产物一致。
-6. 人工核对 `workshop_upload/mod/` 文件列表与描述。
-7. 仅在用户明确下达上传命令后执行上传。
+5. [ ] 用户同步最新源码后运行 `python tools\package_workshop.py`，复核哈希与 MSVC 产物一致。
+6. [ ] 用户审查 `workshop_upload/mod/` 文件列表与描述。
+7. [ ] 仅在用户明确下达上传命令后执行上传。
 
 ## Windows 确定性构建命令
 

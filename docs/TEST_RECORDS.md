@@ -112,13 +112,13 @@
 
 ---
 
-## 当前 MinGW 测试构建（ime_fix v0.4.15-layout / loader v0.2.4 / patcher v1.5；非发布）
+## 当前 MSVC /Brepro 确定性构建（ime_fix v0.4.15-layout / loader v0.2.4 / patcher v1.5，2026-08-17）
 
 记录时间：2026-08-16
 
 | 文件 | 大小 | MD5 | SHA256 |
 |------|------|-----|--------|
-| `src/ime_fix/ime_fix.dll`（发布为 ime_fix.bin，当前 layout 方案） | 19,968 B | `E0B3366B34F51EEA50C1CEF47C21C909` | `D27450A4A4A1531281E53075B036820A49A2B917877B35913B8CDD21E6C3A50C` |
+| `src/ime_fix/ime_fix.dll`（发布为 ime_fix.bin，当前 layout 方案） | 93,696 B | `74E64D06F79B1B61D4E0652DEC67DA9B` | `02B8BF6424F112451ECF9B10BBE5CE34DF6036A4C5628C3B8D1D46D95F8A026F` |
 | `src/ime_loader/ime_loader.dll` | 5,632 B | `AB957DFB668F751EC05A072032E5BBDF` | `36B68A4D770AB632E524E89AD13A61D7F79D993B38B7F6BA8E40D1CC6921BAFF` |
 | `src/ime_patcher/ime_patcher.exe` | 58,368 B | `0E06D346F4A35615C897AC81C870BA2F` | `D89E706E7ED5EE43935B86F65295A1BE6DB2D6A2E2A3354DC70CCD362A924386` |
 

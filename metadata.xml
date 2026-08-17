@@ -46,6 +46,15 @@ certutil -hashfile ime_fix.dll MD5
 certutil -hashfile ime_loader.dll MD5
 certutil -hashfile ime_patcher.exe MD5
 [/code]
+[b]当前确定性构建校验码（2026-08-17）：[/b]
+[code]
+ime_fix.dll      MD5 74E64D06F79B1B61D4E0652DEC67DA9B
+                 SHA256 02B8BF6424F112451ECF9B10BBE5CE34DF6036A4C5628C3B8D1D46D95F8A026F
+ime_loader.dll   MD5 7E9F6A9D396A2EFE90DEAD7EDAE6085A
+                 SHA256 DFE7CF89E6ACFB7D063BE1CABC37B082C282E0F8A0A039F0B580754F6C2D7922
+ime_patcher.exe  MD5 C6C25A202704F56C06C5CC86B976B4F4
+                 SHA256 5C34D4038DFBA3097FCA935064214CF1DA4A4F212FEB4457EE72204675419659
+[/code]
 [*] [b]行为透明：[/b] 不联网、不注入其他进程、不收集任何信息，只管理以撒进程的键盘布局。
 [*] [b]杀软误报：[/b] 二进制由开源代码构建，如被杀软误报请加入白名单，或自行从源码构建。
 [/list]
