@@ -52,6 +52,27 @@ dumpbin /imports ime_patcher.exe
 
 预期 ime_fix 依赖只包含 `kernel32.dll`、`user32.dll`、`winmm.dll`（loader 只含 `kernel32/user32`；patcher 还有 `comdlg32.dll`、`advapi32.dll`），无 CRT 运行时依赖。
 
+## 在 WSL 中执行 MSVC 确定性构建
+
+WSL 挂载的 Windows 盘是只读 9p，不能直接写 `C:\`；但可以通过
+Windows interop 驱动同一套 MSVC 工具链。仓库提供：
+
+```bash
+tools/build_msvc_from_wsl.sh
+```
+
+默认同步到 `C:\dev\ime-conflict-fix` 并构建，之后打印 certutil MD5/SHA256：
+
+```bash
+tools/build_msvc_from_wsl.sh
+PACKAGE=1 tools/build_msvc_from_wsl.sh              # 同时生成 workshop_upload
+WIN_BUILD_DIR='C:\dev\my-build' tools/build_msvc_from_wsl.sh
+```
+
+已验证：在 WSL 中调用 `cmd.exe /c build_all.bat` 与用户直接在 Windows
+PowerShell 中运行 `build_all.bat` 产生**完全相同的 MSVC `/Brepro` 哈希**
+（2026-08-17 实测 MD5 一致）。该脚本要求 `WIN_BUILD_DIR` 路径不含空格。
+
 ## 打包创意工坊上传目录
 
 构建完成后执行：
