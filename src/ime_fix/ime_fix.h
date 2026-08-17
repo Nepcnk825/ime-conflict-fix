@@ -10,32 +10,42 @@
 
 /* Version */
 #define IME_FIX_MAJOR 0
-#define IME_FIX_MINOR 3
-#define IME_FIX_PATCH 6
-#define IME_FIX_STRING "0.3.6"
+#define IME_FIX_MINOR 4
+#define IME_FIX_PATCH 15
+#define IME_FIX_STRING "0.4.15-layout"
 
 /*
- * Shared debug logging — writes to %APPDATA%\ime-conflict-fix\debug.log
- * Uses only kernel32.dll + user32.dll (wsprintf), no CRT.
+ * Shared debug logging.
+ * Writes debug.log next to ime_fix.bin in the mod folder. No C-drive or
+ * game-root files. Uses only kernel32.dll + user32.dll (wsprintf), no CRT.
  */
+extern HMODULE g_imefixModule;
 static void ime_log(const char *tag, const char *message)
 {
-    WCHAR appdata[MAX_PATH];
-    WCHAR dir[MAX_PATH];
+    WCHAR base[MAX_PATH];
     WCHAR file[MAX_PATH];
     WCHAR ts[64];
     SYSTEMTIME st;
     HANDLE h;
     DWORD w;
+    DWORD n;
     char line[512];
     int len;
+    int i, last;
 
-    if (GetEnvironmentVariableW(L"APPDATA", appdata, MAX_PATH) == 0)
+    n = GetModuleFileNameW(g_imefixModule, base, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH)
+        return; /* cannot find the mod folder -> no log */
+
+    last = -1;
+    for (i = 0; base[i]; i++)
+        if (base[i] == L'\\' || base[i] == L'/')
+            last = i;
+    if (last < 0)
         return;
+    base[last + 1] = 0; /* keep the mod folder path */
 
-    wsprintfW(dir, L"%s\\ime-conflict-fix", appdata);
-    CreateDirectoryW(dir, NULL);
-    wsprintfW(file, L"%s\\debug.log", dir);
+    wsprintfW(file, L"%sdebug.log", base);
 
     GetLocalTime(&st);
     wsprintfW(ts, L"%04d-%02d-%02d %02d:%02d:%02d",

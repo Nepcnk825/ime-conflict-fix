@@ -6,24 +6,31 @@
 *.exe
 *.pdb
 *.ilk
+*.bin
+
+# ===== Generated packages & local test staging =====
+build/
+dist/
+workshop_upload/
+.testtmp/
 
 # ===== Local tool state (never commit) =====
 .codegraph/
 .omo/
 .sisyphus/
+__pycache__/
+.pytest_cache/
+.venv/
 
-# ===== Workshop upload staging (user templates/tools, never commit) =====
-workshop_upload/
+# ===== Internal development notes (never on GitHub) =====
+.dev/
+AGENTS.md
+HANDOVER*.md
+
+# ===== Local user settings (transfer to %APPDATA%\ime-conflict-fix) =====
+/settings.ini
 
 # ===== OS noise =====
 Thumbs.db
 Desktop.ini
-
-# ===== Dev-internal docs (keep local, never on GitHub) =====
-.learnings/
-AGENTS.md
-COMPAT.md
-INTEGRATION_TEST.md
-RELEASE.md
-TEST_RECORDS.md
-WORKSHOP.md
+*:Zone.Identifier

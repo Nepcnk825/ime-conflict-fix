@@ -20,6 +20,7 @@
 /* forward decls - defined below, used by do_patch/do_restore */
 static int patch_cn_check(const char *exe_path);
 static int restore_cn_check(const char *exe_path);
+static int file_differs_from_buf(const char *path, const BYTE *buf, DWORD sz);
 
 /* Show a MessageBox with a UTF-8 string; convert to UTF-16 internally.
    Source is UTF-8 (compiled with /utf-8), so Chinese literals work
@@ -72,6 +73,75 @@ static int is_patched(const char *path)
     return r;
 }
 
+/* Recursively delete a directory tree. Used only for the two legacy
+   folders created by old ime_fix versions:
+     - %%APPDATA%%\ime-conflict-fix
+     - <game dir>\ime-conflict-fix
+   Never called with arbitrary user input. */
+static void delete_tree(const char *dir)
+{
+    char pattern[MAX_PATH];
+    char child[MAX_PATH];
+    WIN32_FIND_DATAA fd;
+    HANDLE h;
+
+    sprintf(pattern, "%s\\*", dir);
+    h = FindFirstFileA(pattern, &fd);
+    if (h == INVALID_HANDLE_VALUE) {
+        RemoveDirectoryA(dir);
+        return;
+    }
+    do {
+        if (strcmp(fd.cFileName, ".") == 0 || strcmp(fd.cFileName, "..") == 0)
+            continue;
+        sprintf(child, "%s\\%s", dir, fd.cFileName);
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            delete_tree(child);
+            RemoveDirectoryA(child);
+        } else {
+            SetFileAttributesA(child, FILE_ATTRIBUTE_NORMAL);
+            if (DeleteFileA(child))
+                printf("Removed %s\n", child);
+        }
+    } while (FindNextFileA(h, &fd));
+    FindClose(h);
+    RemoveDirectoryA(dir);
+}
+
+/* Remove legacy log/config folders from very old versions. The current
+   version writes debug.log next to ime_fix.bin in the mods folder and only
+   creates settings.ini there when MCM online options are enabled, so these
+   old folders are pure leftovers. */
+static void cleanup_legacy_folders(const char *exe_path)
+{
+    char dir[MAX_PATH];
+    char game_root[MAX_PATH];
+    DWORD n;
+    char *slash;
+
+    n = GetEnvironmentVariableA("APPDATA", dir, MAX_PATH);
+    if (n > 0 && n < MAX_PATH) {
+        sprintf(dir + n, "\\ime-conflict-fix");
+        if (GetFileAttributesA(dir) != INVALID_FILE_ATTRIBUTES) {
+            printf("Removing legacy folder %s\n", dir);
+            delete_tree(dir);
+            printf("Legacy AppData folder cleaned\n");
+        }
+    }
+
+    strncpy(game_root, exe_path, sizeof(game_root) - 1);
+    game_root[sizeof(game_root) - 1] = 0;
+    slash = strrchr(game_root, '\\');
+    if (slash) {
+        strcpy(slash + 1, "ime-conflict-fix");
+        if (GetFileAttributesA(game_root) != INVALID_FILE_ATTRIBUTES) {
+            printf("Removing legacy game-root folder %s\n", game_root);
+            delete_tree(game_root);
+            printf("Legacy game-root folder cleaned\n");
+        }
+    }
+}
+
 /* Restore mode: verify exe carries our patch, then restore the
    pre-patch backup (.imefix.bak). If the exe has no .imefix section
    (e.g. Steam updated/verified the game), do nothing - the backup
@@ -110,6 +180,7 @@ static int do_restore(const char *path, int clean)
     if (find_imefix_section(nt) < 0) {
         printf("No .imefix section found - nothing to restore (exe already clean).\n");
         free(buf);
+        cleanup_legacy_folders(path);
         return 0;
     }
     free(buf);
@@ -148,6 +219,9 @@ static int do_restore(const char *path, int clean)
     /* Restore the CN patch config.ini check value if we changed it */
     restore_cn_check(path);
 
+    /* Remove pre-v0.4.9 leftovers on C: and in the game root. */
+    cleanup_legacy_folders(path);
+
     /* Clean mode: remove the backup too - zero residue of this mod */
     if (clean) {
         if (GetFileAttributesA(bak) != INVALID_FILE_ATTRIBUTES) {
@@ -160,7 +234,7 @@ static int do_restore(const char *path, int clean)
 
 static int do_patch(const char *path)
 {
-    printf("IME Patcher v1.4\nTarget: %s\n", path);
+    printf("IME Patcher v1.5\nTarget: %s\n", path);
 
     /* Normalize to a FULL path first - sibling paths (backup, DLL copy)
        are derived from it and a bare relative name would corrupt them. */

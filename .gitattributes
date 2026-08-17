@@ -1,0 +1,24 @@
+# 行尾规范：仓库内统一 LF；检出时按文件类型转换。
+* text=auto
+
+# Windows 批处理脚本需要 CRLF，避免 cmd.exe 兼容性问题。
+*.bat text
+
+# 源码与文档统一 LF。
+*.c text eol=lf
+*.h text eol=lf
+*.lua text eol=lf
+*.md text eol=lf
+*.xml text eol=lf
+*.manifest text eol=lf
+*.py text eol=lf
+
+# 二进制文件永不转换。
+*.dll binary
+*.exe binary
+*.obj binary
+*.lib binary
+*.exp binary
+*.bin binary
+*.zip binary
+*.png binary

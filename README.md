@@ -6,10 +6,30 @@
 
 本 Mod 解决这个问题：
 
-- **启用 Mod 时**：游戏启动后立即禁用中文输入法（主菜单即生效），按键恢复正常，全程无感。
-- **禁用/卸载 Mod 时**：不生效，输入法完全正常。
+- **启用 Mod 时**：游戏启动后立即切换到英文键盘布局（主菜单即生效），按键恢复正常，全程无感。
+- **禁用/卸载 Mod 时**：不生效，输入法完全正常。唯一例外：若在 MCM 中显式开启“联机禁用 Mod 也生效”，则禁用 Mod 启动也会在主菜单保持英文布局，便于联机。
 
 卸载或删除后完全还原，不影响游戏本身。
+
+## 项目结构
+
+```
+ime-conflict-fix/
+├── main.lua                  # Lua 信号源
+├── metadata.xml              # 创意工坊元数据 + 描述（唯一真源）
+├── build_all.bat             # 一键构建三个组件
+├── src/
+│   ├── ime_fix/              # 功能 DLL（发布为 ime_fix.bin）
+│   ├── ime_loader/           # 游戏根目录薄壳加载器
+│   └── ime_patcher/          # PE 导入表补丁工具
+├── docs/                     # 架构 / 构建 / 兼容性 / 测试 / 发布文档
+├── tools/package_workshop.py # 生成创意工坊上传暂存包
+└── workshop_upload/          # 上传前暂存（自动生成，不入库）
+```
+
+> **当前源码状态**：`ime_fix` v0.4.15-layout（online_force 主菜单保持英文；1ms 轮询；大厅标记去重修复；Enter 只开聊天、消息广播后才切回英文） / `ime_loader` v0.2.4 / `ime_patcher` v1.5 / `main.lua` v0.3.12。
+> 当前 `src/` 与上传暂存区中的二进制是 **MinGW 测试构建**（DLL 无 CRT 导入），用于本地验证；正式发布仍需在 Windows 上执行 MSVC `/Brepro` 构建。
+> 启动后才在游戏内启用 Mod 的场景，当前通过“开局信号”或“空闲 3 秒信号”触发禁用；这一方案正在等待用户实测，详见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
 
 ## 安装方法
 
@@ -30,11 +50,15 @@
 1. 克隆本仓库到本地
 2. **自行构建**（需要 Visual Studio 2022）：
    ```bat
+   build_all.bat
+   ```
+   或分别构建：
+   ```bat
    cd src\ime_fix      && build.bat    :: 生成 ime_fix.dll（功能 DLL，发布为 ime_fix.bin）
    cd src\ime_loader   && build.bat    :: 生成 ime_loader.dll（薄壳加载器）
    cd src\ime_patcher  && build.bat    :: 生成 ime_patcher.exe
    ```
-   构建产物放在同一目录
+   把三个构建产物放在同一目录
 3. 打开游戏的 mods 文件夹（Steam 库 -> 右键以撒 -> 管理 -> 浏览本地文件 -> 进入 `mods/` 目录），**自行新建一个文件夹并命名为 `ime-conflict-fix`**，把仓库中的 `main.lua` + `metadata.xml` 复制进去，并把 `ime_fix.dll` 重命名为 `ime_fix.bin` 一并放入（功能 DLL 本体，由加载器直接加载）
 4. 运行 `ime_patcher.exe` 打补丁（见下方"打补丁"）
 5. 启动游戏，在主菜单 Mods 菜单中启用 "IME Conflict Fix"
@@ -50,14 +74,16 @@
 > certutil -hashfile ime_patcher.exe MD5
 > ```
 >
-> **当前版本（v0.4.0：ime_fix v0.2.1 / ime_loader v0.2.0 / ime_patcher v1.4）源码构建的参考校验码**：
+> **当前 MinGW 测试构建校验码（非发布，MSVC `/Brepro` 构建待执行）**：
 >
-> | 文件 | MD5 | SHA256 |
-> |------|-----|--------|
-> | ime_fix.dll (84,992 B) | `EFAAFD2AF8987507C3CA2842FDE06B47` | `C954E1AF809E756B9C86A2511876857B822FB63072D7B6E478BEB916B12389E3` |
-> | ime_loader.dll (82,432 B) | `E343C2A1F1114966062541C5BC19059B` | `C1D65D99108CCD68263F4E59D0A445E1E3998A0D7FE64AC7632DE81C40E0AC37` |
-> | ime_patcher.exe (136,704 B) | `88BA79B481180A520AFB162DEC42EB8C` | `D652A5D6621FF569333ADACC6311EC97E500C06683DC6270337BE0B993621378` |
-
+> | 文件 | 大小 | MD5 | SHA256 |
+> |------|------|-----|--------|
+> | ime_fix.dll / ime_fix.bin | 19,968 B | `E0B3366B34F51EEA50C1CEF47C21C909` | `D27450A4A4A1531281E53075B036820A49A2B917877B35913B8CDD21E6C3A50C` |
+> | ime_loader.dll | 5,120 B | `AB957DFB668F751EC05A072032E5BBDF` | `36B68A4D770AB632E524E89AD13A61D7F79D993B38B7F6BA8E40D1CC6921BAFF` |
+> | ime_patcher.exe | 59,392 B | `7BD7485CC501A9B4013E965C3073D23B` | `6610F37256060B42BF0AC5FB0F3DFD2EB5904ECA97DE25B562B3D9B44E23109A` |
+>
+> 上一版 MSVC v0.3.6 产物备份在 `build/previous-msvc-v036/`（本地，不入库）。
+>
 ### 打补丁（一次性，全自动）
 
 **双击运行 `ime_patcher.exe`**。它会自动从 Steam 注册表找到以撒的游戏目录，弹出确认框，点"是"即完成：
@@ -83,7 +109,7 @@
 - **操作测试**：尝试切换输入法（Ctrl+Shift / Win+空格）或打字：
   - **Mod 启用时**：切换无效、无法呼出中文输入法 —— Mod 在工作。
   - **Mod 禁用时**：输入法正常可用。
-- **状态栏观察**：将游戏设为**窗口化或无边框窗口**运行，直接观察任务栏（或系统托盘）的输入法指示器——Mod 生效时指示器显示为"圆圈中间带 X"（输入法被禁用的标志），无论怎么按切换键都无法恢复中文模式。
+- **状态栏观察**：将游戏设为**窗口化或无边框窗口**运行，直接观察任务栏（或系统托盘）的输入法指示器——Mod 生效时指示器应显示为英文布局（ENG）；若 MCM 开启了“锁定英文布局”，手动切回中文也会在约 0.5 秒内被切回英文。
 
 ## 卸载方法
 
@@ -92,6 +118,7 @@
 1. 用 `isaac-ng.exe.imefix.bak` 还原 exe——**如果**你之前安装过其他补丁（如官中补丁），备份的就是"安装其他补丁后"的状态，还原后其他补丁完整保留、不受影响；**如果**你没装过任何其他补丁，还原后就是官方原版
 2. 自动删除游戏目录中的 `ime_loader.dll`
 3. **如果**装有官中补丁且安装时改过其 config.ini，会自动恢复 check 原值（官中补丁本身不受影响）
+4. v1.5 起：自动清理旧版本可能遗留的 `%APPDATA%\ime-conflict-fix` 文件夹和游戏根目录下旧的 `ime-conflict-fix` 日志文件夹
 4. **完全清理**：还原后 exe 与打补丁前的状态逐字节一致（未装其他补丁时即官方原版 MD5），无任何残留
 
 > 还原确认框点"否"仅还原（保留 `.imefix.bak` 备份文件，防误操作）；点"是"还原并完全清理（连备份一起删除，零残留，推荐），
@@ -113,6 +140,13 @@ A: 不会。本 Mod 只管理以撒这一个进程的输入法，退出游戏后
 A: **忏悔+官中补丁：实测可共用，且无安装顺序要求**（先装哪个都行）——本 Mod 在 `isaac-ng.exe` 导入表上追加独立条目，官中补丁在其自有空间内修改 exe，两者互不影响、互不覆盖。本 Mod 还自动兼容官中补丁的启动校验（将其 config.ini 的 check 改为 -1，消除弹窗）。
 
 **REPENTOGON：理论上兼容，但未联合实测，请自行验证。**
+
+### Q: 启动后才在游戏内启用 Mod，多久生效？
+A: 如果你在启动窗口之后才于 Mods 菜单启用本 Mod，DLL **不会**在返回主菜单的瞬间禁用输入法——那个时刻游戏仍在初始化/重载 UI，立即调用会冻结界面（这是 `ImmDisableIME` 的底层限制）。当前实现会在以下任一安全时机自动禁用：
+- 进入一局游戏、开局信号发出时（`MC_POST_GAME_STARTED`）
+- 主菜单或其他界面持续 3 秒无任何按键时（空闲信号）
+
+如果想主菜单立即生效，请保持 Mod 启用状态启动游戏。
 
 ### Q: 游戏更新后需要重新打补丁吗？
 A: **需要**。Steam 更新游戏时会用新的 exe 覆盖旧的，之前的补丁就没了。更新后重新运行一次 `ime_patcher.exe` 即可（一分钟搞定）。
@@ -151,13 +185,22 @@ A: 本项目**未做过 VirusTotal 等第三方扫描认证**。二进制文件�
 2. **ime_loader.dll**：薄壳加载器（游戏目录唯一常驻文件，永不更新）。启动时设置 `IME_FIX_GAME_DIR` 环境变量后直接加载创意工坊 mod 目录的 `ime_fix.bin`（Steam 自动同步的新版本）。功能 DLL 本体在 mods 文件夹中由 Steam 就地更新，Mod 更新时**无需重新打补丁**，游戏根目录也只有一个永不变化的文件。
 
 3. **ime_fix.dll**（mods 文件夹内的 ime_fix.bin）：输入法管理器。通过 `IME_FIX_GAME_DIR` 定位存档目录后，在工作线程轮询 log.txt（记录基线，只扫描新增部分），分两阶段检测：
-   - **阶段 1（启动窗口 ~12 秒）**：扫描是否出现 `Running Lua Script: .../ime-conflict-fix/main.lua`（游戏只在 mod 真正执行时写这行，`LOADED MOD` 枚举不可靠）→ 找到立即 `ImmDisableIME(-1)`（主菜单即生效）
-   - **阶段 2（启动窗口后）**：若 mod 在游戏内才被启用（log 出现 `Menu Mods Init` 之后的 mod 标记）→ 等 `AnmCache: Clear`（mod 重载完成、回到主菜单）→ 禁用；或等开局信号 `[IME_RUN_STARTED]` → 开局禁用
+   - **阶段 1（启动窗口 ~12 秒）**：扫描是否出现 `Running Lua Script: .../ime-conflict-fix/main.lua`（游戏只在 mod 真正执行时写这行，`LOADED MOD` 枚举不可靠）→ 找到后向游戏主窗口请求切换到英文键盘布局
+   - **阶段 2（启动窗口后）**：滚动扫描新增日志，等待开局信号 `[IME_RUN_STARTED]` 或玩家 3 秒无输入的空闲信号 `[IME_IDLE]`；触发后向游戏主窗口发送 `WM_INPUTLANGCHANGEREQUEST`，切换到英文键盘布局。
    - mod 全程禁用/未执行 → 不做任何事
 
-4. **Lua Mod**（创意工坊）：极简——被游戏执行时留下 `main.lua` 执行日志（阶段 1 信号），并在开局时写 `[IME_RUN_STARTED]`（阶段 2 信号）。
+4. **Lua Mod**（创意工坊）：极简——被游戏执行时留下 `main.lua` 执行日志（阶段 1 信号），开局时写 `[IME_RUN_STARTED]`，键盘/鼠标均无输入 3 秒时写 `[IME_IDLE]`（阶段 2 的两个安全信号）。
 
-为什么用 log.txt 信号而不是直接启动时禁用？因为 `ImmDisableIME(-1)` 是**不可逆**的，一旦调用就无法在进程内重新启用。必须确认 mod 已启用（= 用户需要禁用 IME）才调用。
+为什么用 log.txt 信号？因为必须确认 mod 已启用才执行。当前方案不再调用不可逆的 `ImmDisableIME(-1)`，而是请求 `DefWindowProc` 把游戏线程输入语言切到英文（US）；这是可逆且异步的，不会与忙碌的 UI 线程同步卡死。
+
+## 更多文档
+
+- [架构说明](docs/ARCHITECTURE.md)：组件关系、信号协议、`ImmDisableIME` 限制与历史试错
+- [构建与打包](docs/BUILDING.md)：VS 2022 x86 构建、确定性校验码、上传包生成
+- [输入法兼容性](docs/COMPATIBILITY.md)：支持范围与已知限制
+- [集成测试](docs/TESTING.md)：standalone/游戏内测试流程
+- [测试记录](docs/TEST_RECORDS.md)：exe 原版/官中补丁/本 Mod 三阶段哈希
+- [发布流程](docs/RELEASING.md)：创意工坊上传与 Git 发布注意事项
 
 ## 参考与致谢
 

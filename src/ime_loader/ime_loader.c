@@ -39,6 +39,7 @@
    GetModuleFileNameW(hModule) returns ime_loader.dll's own path, NOT the
    host exe's path - the host might live elsewhere (e.g. rundll32 tests). */
 static HMODULE g_hself = NULL;
+WCHAR g_logDir[MAX_PATH] = {0};
 
 #define MOD_DIR_PREFIX L"ime-conflict-fix"  /* matches bare name and Steam's <name>_<id> */
 
@@ -128,6 +129,13 @@ static void loader_run(void)
     SetEnvironmentVariableW(L"IME_FIX_GAME_DIR", self);
 
     if (find_bin_path(self, bin, sizeof(bin))) {
+        int last = path_last_slash(bin);
+        int i;
+        if (last >= 0) {
+            for (i = 0; i <= last; i++)
+                g_logDir[i] = bin[i];
+            g_logDir[last + 1] = 0;
+        }
         if (LoadLibraryW(bin))
             loader_log("main", "ime_fix.bin loaded from mods folder");
         else
@@ -143,8 +151,8 @@ BOOL WINAPI DllMain(HINSTANCE h, DWORD reason, LPVOID reserved)
     if (reason == DLL_PROCESS_ATTACH) {
         DisableThreadLibraryCalls(h);
         g_hself = h;
-        loader_log("main", "ime_loader.dll v" IME_LOADER_STRING " loaded");
         loader_run();
+        loader_log("main", "ime_loader.dll v" IME_LOADER_STRING " loaded");
     }
     return TRUE;
 }

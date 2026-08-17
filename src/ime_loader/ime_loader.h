@@ -11,28 +11,45 @@
 /* Version */
 #define IME_LOADER_MAJOR 0
 #define IME_LOADER_MINOR 2
-#define IME_LOADER_PATCH 1
-#define IME_LOADER_STRING "0.2.1"
+#define IME_LOADER_PATCH 4
+#define IME_LOADER_STRING "0.2.4"
 
-/* Shared debug logging - writes to %APPDATA%\ime-conflict-fix\debug.log */
+/*
+ * Shared debug logging.
+ * Writes debug.log into the detected mod folder (the folder containing
+ * ime_fix.bin). If no mod folder is found yet, fall back to host exe dir.
+ * Never falls back to %APPDATA%.
+ */
+extern WCHAR g_logDir[MAX_PATH];
+
 static void loader_log(const char *tag, const char *message)
 {
-    WCHAR appdata[MAX_PATH];
-    WCHAR dir[MAX_PATH];
+    WCHAR base[MAX_PATH];
     WCHAR file[MAX_PATH];
     WCHAR ts[64];
     SYSTEMTIME st;
     HANDLE h;
     DWORD w;
+    DWORD n;
     char line[512];
     int len;
+    int i, last;
 
-    if (GetEnvironmentVariableW(L"APPDATA", appdata, MAX_PATH) == 0)
-        return;
-
-    wsprintfW(dir, L"%s\\ime-conflict-fix", appdata);
-    CreateDirectoryW(dir, NULL);
-    wsprintfW(file, L"%s\\debug.log", dir);
+    if (g_logDir[0]) {
+        wsprintfW(file, L"%sdebug.log", g_logDir);
+    } else {
+        n = GetModuleFileNameW(NULL, base, MAX_PATH);
+        if (n == 0 || n >= MAX_PATH)
+            return; /* no path -> no log */
+        last = -1;
+        for (i = 0; base[i]; i++)
+            if (base[i] == L'\\' || base[i] == L'/')
+                last = i;
+        if (last < 0)
+            return;
+        base[last + 1] = 0;
+        wsprintfW(file, L"%sdebug.log", base);
+    }
 
     GetLocalTime(&st);
     wsprintfW(ts, L"%04d-%02d-%02d %02d:%02d:%02d",
