@@ -27,6 +27,10 @@ __pycache__/
 AGENTS.md
 HANDOVER*.md
 
+# ===== Local docs/tools (kept out of the public security-review repo) =====
+/docs/
+/tools/
+
 # ===== Local user settings (transfer to %APPDATA%\ime-conflict-fix) =====
 /settings.ini
 

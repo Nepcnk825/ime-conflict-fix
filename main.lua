@@ -1,5 +1,5 @@
 -- IME Conflict Fix for The Binding of Isaac: Repentance+
--- Version: 0.3.12
+-- Version: 0.3.13
 --
 -- Signal mod:
 --   1. Execution marker: "Running Lua Script: .../main.lua" (Phase 1 startup).
@@ -11,7 +11,7 @@
 --      possible; a player who stops for 3s gives us a quiescent moment.
 
 local MOD_NAME = "IME Conflict Fix"
-local MOD_VERSION = "0.3.12"
+local MOD_VERSION = "0.3.13"
 
 local mod = RegisterMod(MOD_NAME, 1)
 
@@ -20,6 +20,7 @@ local mod = RegisterMod(MOD_NAME, 1)
 -- ============================================================
 local MCM_LOADED, MCM = pcall(require, "scripts.modconfig")
 local JSON_LOADED, json = pcall(require, "json")
+local MCM_AVAILABLE = (MCM_LOADED and MCM and ModConfigMenu)
 
 local imeConfig = {
     lock_layout = 1,
@@ -170,7 +171,7 @@ mod:AddCallback(ModCallbacks.MC_POST_GAME_STARTED, mod.onGameStart)
 mod:AddCallback(ModCallbacks.MC_POST_RENDER, mod.onRender)
 
 -- Register with Mod Config Menu if installed.
-if MCM_LOADED and MCM and ModConfigMenu then
+if MCM_AVAILABLE then
     local zh = (MCM.i18n == "Chinese")
 
     MCM.AddSetting(
@@ -240,13 +241,17 @@ if MCM_LOADED and MCM and ModConfigMenu then
                 saveImeConfig()
                 emitOnlineChatSignal()
             end,
-            Info = zh and {"实验性：第一次 Enter 切中文，第二次 Enter 切回英文；无超时。效果不稳定。"}
-                       or {"Experimental: first Enter switches to Chinese, second Enter back to English. No timeout. Unstable."},
+            Info = zh and {"实验性：第一次 Enter 切中文，消息发出后自动切回英文。"}
+                       or {"Experimental: first Enter switches to Chinese; restores English after the message is broadcast."},
         }
     )
 end
 
-emitLockLayoutSignal()
-emitOnlineChatSignal()
-emitOnlineForceSignal()
+-- Only emit MCM settings when the Mod配置菜单（中文版） is installed.
+-- Without it, the DLL uses the optional settings.ini next to ime_fix.bin.
+if MCM_AVAILABLE then
+    emitLockLayoutSignal()
+    emitOnlineChatSignal()
+    emitOnlineForceSignal()
+end
 Isaac.DebugString("[IME Conflict Fix] Registered (v" .. MOD_VERSION .. ")")

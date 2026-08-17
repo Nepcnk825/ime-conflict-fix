@@ -19,7 +19,6 @@ if errorlevel 1 exit /b 1
 echo.
 echo [PASS] All three components built.
 echo.
-echo Optional: package the Workshop upload folder with:
-echo   python "%ROOT%tools\package_workshop.py"
+echo ime_fix.dll must be renamed to ime_fix.bin inside the mod folder.
 endlocal
 exit /b 0
