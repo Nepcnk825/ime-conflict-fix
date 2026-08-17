@@ -84,6 +84,10 @@ ime-conflict-fix/
 >
 > 上一版 MSVC v0.3.6 产物备份在 `build/previous-msvc-v036/`（本地，不入库）。
 >
+> **正式发布状态：等待 Windows MSVC `/Brepro` 确定性构建。** 构建完成后用
+> `certutil -hashfile` 记录三个产物的 MD5，替换上表，再打包上传。
+> 完整发布步骤见 [docs/RELEASING.md](docs/RELEASING.md)。
+>
 ### 打补丁（一次性，全自动）
 
 **双击运行 `ime_patcher.exe`**。它会自动从 Steam 注册表找到以撒的游戏目录，弹出确认框，点"是"即完成：
