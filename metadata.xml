@@ -52,26 +52,7 @@ chat_toggle=0
 [/list]
 
 [h2]安全性说明[/h2]
-[list]
-[*] [b]完全开源：[/b] 全部源代码公开在 [url=https://github.com/Nepcnk825/ime-conflict-fix]GitHub 仓库[/url]（MIT 许可），任何人都可以审查源码后自行构建。
-[*] [b]可复现构建：[/b] 构建脚本使用确定性编译（/Brepro），从源码构建出的二进制与作者发布的校验码一致：
-[code]
-certutil -hashfile ime_fix.dll MD5
-certutil -hashfile ime_loader.dll MD5
-certutil -hashfile ime_patcher.exe MD5
-[/code]
-[b]当前确定性构建校验码（2026-08-17）：[/b]
-[code]
-ime_fix.dll      MD5 74E64D06F79B1B61D4E0652DEC67DA9B
-                 SHA256 02B8BF6424F112451ECF9B10BBE5CE34DF6036A4C5628C3B8D1D46D95F8A026F
-ime_loader.dll   MD5 7E9F6A9D396A2EFE90DEAD7EDAE6085A
-                 SHA256 DFE7CF89E6ACFB7D063BE1CABC37B082C282E0F8A0A039F0B580754F6C2D7922
-ime_patcher.exe  MD5 C6C25A202704F56C06C5CC86B976B4F4
-                 SHA256 5C34D4038DFBA3097FCA935064214CF1DA4A4F212FEB4457EE72204675419659
-[/code]
-[*] [b]行为透明：[/b] 不联网、不注入其他进程、不收集任何信息，只管理以撒进程的键盘布局。
-[*] [b]杀软误报：[/b] 本 Mod 会修改 exe 或加载 DLL，可能被杀软误报。二进制由开源代码构建，可自行构建核对校验码；确认安全后可加入白名单。
-[/list]
+全部源代码公开在 [url=https://github.com/Nepcnk825/ime-conflict-fix]GitHub 仓库[/url]，可自行审查。
 
 [h2]FAQ (常见问题解答)[/h2]
 [list]
@@ -82,7 +63,7 @@ ime_patcher.exe  MD5 C6C25A202704F56C06C5CC86B976B4F4
 答：默认情况下联机时游戏禁用 Mod，本 Mod 不生效，中文聊天正常。若在 Mod配置菜单（中文版）中开启“联机禁用 Mod 也生效”，则禁用 Mod 联机时也会在主菜单就保持英文布局；开启实验性“联机聊天切换”后，第一次 Enter 切到中文，消息真正发出后自动切回英文。
 
 [*] [b]问：启动后才在游戏内启用 Mod，多久生效？[/b]
-答：游戏会先重载 Mod；一旦日志出现本 Mod 的执行记录，DLL 会立即异步请求英文布局，不会卡住界面。若游戏因此自动重启，下次启动会在主菜单直接生效。
+答：游戏会先重载 Mod；一旦日志出现本 Mod 的执行记录，DLL 会立即请求英文布局。若游戏因此自动重启，下次启动会在主菜单直接生效。
 
 [*] [b]问：游戏更新后需要重新打补丁吗？[/b]
 答：需要。Steam 更新游戏会覆盖 exe，更新后重新运行一次补丁工具即可。Mod 更新则无需重打补丁。
@@ -100,7 +81,7 @@ ime_patcher.exe  MD5 C6C25A202704F56C06C5CC86B976B4F4
 答：可在 mods 文件夹中手动创建或编辑 `settings.ini`，格式见上文“核心功能”。Mod 会读取该文件；只有通过 Mod配置菜单（中文版）修改联机选项后，DLL 才会自动更新该文件。
 
 [*] [b]问：搜狗 / 小狼毫等输入法能用吗？[/b]
-答：微软拼音已经完整支持。其他输入法使用同一 Windows 键盘布局机制，通常可用；如果遇到问题请在 GitHub Issues 反馈输入法名称和版本。
+答：目前实现方式是直接切换输入法，而不是禁用微软拼音的中文模式，所以理论上全部兼容。
 
 [*] [b]问：Steam Deck / Linux 能用吗？[/b]
 答：目前仅支持 Windows。非 Windows 系统上 Lua 部分自动跳过，不影响游戏运行。
@@ -127,7 +108,7 @@ ime_patcher.exe  MD5 C6C25A202704F56C06C5CC86B976B4F4
 [*] 3. 运行 `ime_patcher.exe` 打补丁（自动定位游戏、自动复制 ime_loader.dll，一次完成）
 [*] 4. 启动游戏，在主菜单 Mods 菜单中启用本 Mod
 [/list]
-[*] [b]旧版本用户：[/b] 请先运行旧版 `ime_patcher.exe` 卸载/还原，再解压本版本 `ime_loader.zip` 使用新的 `ime_patcher.exe` 安装。
+[*] [b]旧版本用户：[/b] 请先删除旧版本解压出来的 `ime_patcher.exe` / `ime_loader.dll` 等文件，再解压本版本 `ime_loader.zip`，使用新的 `ime_patcher.exe` 先卸载/还原，然后重新打补丁安装。
 [*] [b]卸载：[/b] 再次运行 `ime_patcher.exe`，点&quot;是&quot;即可完整还原：
 [list]
 [*] 还原 exe
@@ -144,9 +125,10 @@ ime_patcher.exe  MD5 C6C25A202704F56C06C5CC86B976B4F4
 [list]
 [*] [b]26/08/17 - v0.5.0:[/b]
 [list]
-[*] [b]新增：[/b] 可逆英文布局方案；Mod配置菜单（中文版）三项游戏内设置；联机禁用 Mod 也生效；实验性联机聊天 Enter 切换；未安装 Mod配置菜单（中文版）时可使用 settings.ini 手动配置。
+[*] [b]大改：[/b] 实现方式从“不可逆禁用输入法”改为“切换英文键盘布局”，不再因切换时机卡住界面，兼容性提高。
 [*] [b]优化：[/b] 前台布局检查与日志轮询提升到 1ms；日志与设置迁移到 mod 文件夹；从 WSL 也可调用 Windows MSVC 完成确定性构建。
 [*] [b]修复：[/b] 联机大厅标记重复处理导致聊天中文被秒切回英文；Mod配置菜单（中文版）配置恢复不完整；组件构建脚本从仓库根目录调用时找不到源文件。
+[*] [b]新增：[/b] Mod配置菜单（中文版）三项游戏内设置；联机禁用 Mod 也生效；实验性联机聊天 Enter 切换；未安装 Mod配置菜单（中文版）时可使用 settings.ini 手动配置。
 [*] [b]更新：[/b] ime_fix v0.4.15-layout / ime_loader v0.2.4 / ime_patcher v1.5（卸载清理旧版遗留目录）。
 [/list]
 [*] [b]26/08/15 - v0.4.2:[/b]
